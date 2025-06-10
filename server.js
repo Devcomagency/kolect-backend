@@ -45,7 +45,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur Kolect démarré sur le port ${PORT}`);
   console.log(`🌐 Interface test: http://localhost:${PORT}/test.html`);
 });
