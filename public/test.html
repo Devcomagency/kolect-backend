@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Kolect API</title>
+    <style>
+        body { font-family: Arial; max-width: 700px; margin: 20px auto; padding: 20px; }
+        button { background: #4ECDC4; color: white; border: none; padding: 10px 15px; margin: 5px; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #44B9A6; }
+        .result { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4ECDC4; }
+        pre { background: #eee; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px; }
+        .tokens { background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 11px; }
+    </style>
+</head>
+<body>
+    <h1>🌿 Test Backend Kolect</h1>
+    
+    <div>
+        <button onclick="testHealth()">Test Health</button>
+        <button onclick="testLogin()">Test Login</button>
+        <button onclick="testInitiatives()">Test Initiatives</button>
+        <button onclick="testProfile()">Test Profil</button>
+    </div>
+    
+    <div id="tokenInfo" class="tokens" style="display:none;">
+        <strong>Token actuel:</strong> <span id="currentToken"></span>
+    </div>
+    
+    <div id="result" class="result">
+        Cliquez sur un bouton pour tester...
+    </div>
+
+    <script>
+        let token = '';
+        
+        async function testHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                showResult('Health Check', data);
+            } catch (error) {
+                showResult('Erreur', { error: error.message });
+            }
+        }
+        
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'jean@kolect.com',
+                        password: 'password123'
+                    })
+                });
+                const data = await response.json();
+                if (data.token) {
+                    token = data.token;
+                    document.getElementById('currentToken').textContent = token.substring(0, 50) + '...';
+                    document.getElementById('tokenInfo').style.display = 'block';
+                }
+                showResult('Login', data);
+            } catch (error) {
+                showResult('Erreur', { error: error.message });
+            }
+        }
+        
+        async function testInitiatives() {
+            if (!token) {
+                showResult('Erreur', { error: 'Connectez-vous d\'abord!' });
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/scans/initiatives', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await response.json();
+                showResult('Initiatives', data);
+            } catch (error) {
+                showResult('Erreur', { error: error.message });
+            }
+        }
+        
+        async function testProfile() {
+            if (!token) {
+                showResult('Erreur', { error: 'Connectez-vous d\'abord!' });
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/collaborators/profile', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await response.json();
+                showResult('Profil Collaborateur', data);
+            } catch (error) {
+                showResult('Erreur', { error: error.message });
+            }
+        }
+        
+        function showResult(title, data) {
+            document.getElementById('result').innerHTML = 
+                '<h3>' + title + '</h3><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+    </script>
+</body>
+</html>
