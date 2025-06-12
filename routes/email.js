@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 const router = express.Router();
 
 // Configuration email (à adapter selon votre service)
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: 'gmail', // ou 'outlook', 'yahoo', etc.
   auth: {
     user: process.env.EMAIL_USER || 'votre-email@gmail.com',
