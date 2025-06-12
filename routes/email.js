@@ -2,28 +2,29 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const router = express.Router();
 
-// Configuration email (à adapter selon votre service)
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // ou 'outlook', 'yahoo', etc.
+// === CONFIGURATION EMAIL DEVCOM AGENCY ===
+const transporter = nodemailer.createTransport({  // ← CORRIGÉ: createTransport (sans "r")
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER || 'votre-email@gmail.com',
-    pass: process.env.EMAIL_PASS || 'votre-mot-de-passe-app'
+    user: process.env.EMAIL_USER,      // Votre Gmail technique
+    pass: process.env.EMAIL_PASS       // Mot de passe app Gmail
   }
 });
 
-// Test endpoint
+// === TEST ENDPOINT ===
 router.get('/test', (req, res) => {
   res.json({
     success: true,
-    message: 'Endpoint email opérationnel 📧',
-    timestamp: new Date().toISOString()
+    message: 'Endpoint email Devcom opérationnel 📧',
+    timestamp: new Date().toISOString(),
+    fromEmail: 'info@devcom.ch'
   });
 });
 
-// Endpoint envoi contrat
+// === ENVOI CONTRAT ENDPOINT ===
 router.post('/send-contract', async (req, res) => {
   try {
-    console.log('📧 === DÉBUT ENVOI EMAIL CONTRAT ===');
+    console.log('📧 === DÉBUT ENVOI EMAIL CONTRAT DEVCOM ===');
     
     const { userInfo, contractData } = req.body;
     
@@ -34,9 +35,9 @@ router.post('/send-contract', async (req, res) => {
       });
     }
 
-    console.log('📧 Envoi contrat à:', userInfo.email);
+    console.log('📧 Envoi contrat Devcom à:', userInfo.email);
     
-    // HTML du contrat
+    // === HTML CONTRAT DEVCOM AGENCY ===
     const contractHTML = `
       <!DOCTYPE html>
       <html>
@@ -83,12 +84,6 @@ router.post('/send-contract', async (req, res) => {
             background: #f0fffe; 
             text-align: center; 
           }
-          ul { 
-            padding-left: 20px; 
-          }
-          li { 
-            margin-bottom: 8px; 
-          }
           .footer { 
             background: #f8f9fa; 
             padding: 20px; 
@@ -96,6 +91,14 @@ router.post('/send-contract', async (req, res) => {
             font-size: 12px; 
             color: #666; 
           }
+          .devcom-branding {
+            border-top: 3px solid #4ECDC4;
+            padding: 20px;
+            background: #f8f9fa;
+            text-align: center;
+          }
+          ul { padding-left: 20px; }
+          li { margin-bottom: 8px; }
         </style>
       </head>
       <body>
@@ -123,65 +126,87 @@ router.post('/send-contract', async (req, res) => {
               <li>Respecter les délais et objectifs fixés</li>
               <li>Fournir un travail de qualité professionnelle</li>
               <li>Maintenir la confidentialité des informations</li>
-              <li>Communiquer de manière respectueuse</li>
-              <li>Collecter les signatures de manière éthique</li>
+              <li>Communiquer de manière respectueuse et professionnelle</li>
+              <li>Collecter les signatures de manière éthique et légale</li>
               <li>Utiliser l'application Kolect conformément aux consignes</li>
             </ul>
             
             <h4>🛡️ Mes Droits :</h4>
             <ul>
-              <li>Formation et support technique fournis</li>
+              <li>Formation et support technique fournis par Devcom Agency</li>
               <li>Rémunération selon barème convenu</li>
               <li>Protection des données personnelles</li>
               <li>Assistance en cas de difficultés terrain</li>
+              <li>Support technique via info@devcom.ch</li>
             </ul>
             
             <div class="signature-box">
               <h4>✍️ Signature Électronique Validée</h4>
               <p>Ce contrat a été signé électroniquement le <strong>${new Date().toLocaleString('fr-FR')}</strong></p>
-              <p><strong>Référence :</strong> KOLECT-${Date.now()}</p>
+              <p><strong>Référence :</strong> KOLECT-DEVCOM-${Date.now()}</p>
               <p><em>Cette signature électronique a la même valeur juridique qu'une signature manuscrite.</em></p>
             </div>
             
-            <p><strong>Ce document constitue un contrat légalement valide entre ${userInfo.prenom || userInfo.firstName} ${userInfo.nom || userInfo.lastName} et Kolect.</strong></p>
+            <p><strong>Ce document constitue un contrat légalement valide entre ${userInfo.prenom || userInfo.firstName} ${userInfo.nom || userInfo.lastName} et Devcom Agency pour le projet Kolect.</strong></p>
+          </div>
+          
+          <div class="devcom-branding">
+            <h3>🚀 Devcom Agency</h3>
+            <p><strong>Contact :</strong> info@devcom.ch</p>
+            <p><strong>Projet :</strong> Kolect - Collecte éco-responsable</p>
+            <p>Développé par Devcom Agency</p>
           </div>
           
           <div class="footer">
             <p>🌿 Kolect - Collecte éco-responsable</p>
-            <p>Document généré automatiquement le ${new Date().toLocaleString('fr-FR')}</p>
+            <p>Devcom Agency - Document généré le ${new Date().toLocaleString('fr-FR')}</p>
           </div>
         </div>
       </body>
       </html>
     `;
     
-    const reference = `KOLECT-${Date.now()}`;
+    const reference = `KOLECT-DEVCOM-${Date.now()}`;
     
+    // === CONFIGURATION EMAIL DEVCOM ===
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@kolect.com',
-      to: userInfo.email,
-      subject: `🌿 Contrat Kolect - ${userInfo.prenom || userInfo.firstName} ${userInfo.nom || userInfo.lastName}`,
-      html: contractHTML
+      from: 'Devcom Agency <info@devcom.ch>',        // ← VOTRE EMAIL VISIBLE
+      replyTo: 'info@devcom.ch',                     // ← Réponses vers vous
+      to: userInfo.email,                            // Destinataire
+      subject: `🌿 Contrat Kolect - ${userInfo.prenom || userInfo.firstName} ${userInfo.nom || userInfo.lastName} (Devcom Agency)`,
+      html: contractHTML,
+      attachments: [
+        {
+          filename: `Contrat-Kolect-${userInfo.prenom || userInfo.firstName}-${userInfo.nom || userInfo.lastName}.html`,
+          content: contractHTML,
+          contentType: 'text/html'
+        }
+      ]
     };
     
-    console.log('📤 Envoi email avec nodemailer...');
+    console.log('📤 Envoi email Devcom avec nodemailer...');
+    console.log('📧 From:', mailOptions.from);
+    console.log('📧 To:', mailOptions.to);
+    
     const result = await transporter.sendMail(mailOptions);
-    console.log('✅ Email envoyé:', result.messageId);
+    console.log('✅ Email Devcom envoyé:', result.messageId);
     
     res.json({
       success: true,
-      message: 'Contrat envoyé par email avec succès',
+      message: 'Contrat envoyé par email avec succès depuis Devcom Agency',
       emailSent: true,
       reference: reference,
-      messageId: result.messageId
+      messageId: result.messageId,
+      fromEmail: 'info@devcom.ch',
+      agency: 'Devcom Agency'
     });
     
   } catch (error) {
-    console.error('❌ Erreur envoi email:', error);
+    console.error('❌ Erreur envoi email Devcom:', error);
     
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de l\'envoi de l\'email',
+      message: 'Erreur lors de l\'envoi de l\'email Devcom',
       error: error.message,
       emailSent: false
     });
