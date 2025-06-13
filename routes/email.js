@@ -3,11 +3,12 @@ const nodemailer = require('nodemailer');
 const router = express.Router();
 
 // === CONFIGURATION EMAIL DEVCOM AGENCY ===
+// Auth avec devcomagency@gmail.com mais envoi depuis info@devcom.ch
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER,      // Votre Gmail technique
-    pass: process.env.EMAIL_PASS       // Mot de passe app Gmail
+    user: process.env.EMAIL_USER,      // devcomagency@gmail.com
+    pass: process.env.EMAIL_PASS       // Clé 16 caractères de devcomagency@gmail.com
   }
 });
 
@@ -36,7 +37,18 @@ router.post('/send-contract', async (req, res) => {
     }
 
     console.log('📧 Envoi contrat Devcom à:', userInfo.email);
+    console.log('📧 Copie à: info@devcom.ch');
     console.log('✍️ Signature incluse:', contractData.signatureImage ? 'Oui' : 'Non');
+    console.log('📧 Expéditeur: info@devcom.ch (via devcomagency@gmail.com)');
+    
+    // Vérifier que l'email n'est pas une adresse test
+    if (!userInfo.email || userInfo.email.includes('exemple.com') || userInfo.email.includes('test.com')) {
+      console.log('❌ Adresse email invalide ou test:', userInfo.email);
+      return res.status(400).json({
+        success: false,
+        message: 'Adresse email invalide. Veuillez utiliser une vraie adresse email.'
+      });
+    }
     
     // === CRÉATION IMAGE SIGNATURE POUR EMAIL ===
     let signatureHTML = '';
@@ -205,11 +217,12 @@ router.post('/send-contract', async (req, res) => {
     
     const reference = `KOLECT-DEVCOM-${Date.now()}`;
     
-    // === CONFIGURATION EMAIL DEVCOM AVEC SIGNATURE ===
+    // === CONFIGURATION EMAIL DEVCOM AVEC COPIE ===
     const mailOptions = {
-      from: 'Devcom Agency <info@devcom.ch>',        // ← VOTRE EMAIL VISIBLE
-      replyTo: 'info@devcom.ch',                     // ← Réponses vers vous
-      to: userInfo.email,                            // Destinataire
+      from: 'Devcom Agency <info@devcom.ch>',        // ← Expéditeur visible
+      replyTo: 'info@devcom.ch',                     // ← Réponses vers Devcom
+      to: userInfo.email,                            // ← Destinataire principal (collaborateur)
+      cc: 'info@devcom.ch',                          // ← Copie à Devcom
       subject: `🌿 Contrat Kolect Signé - ${userInfo.firstName || userInfo.prenom} ${userInfo.lastName || userInfo.nom} (Devcom Agency)`,
       html: contractHTML,
       attachments: [
@@ -221,9 +234,10 @@ router.post('/send-contract', async (req, res) => {
       ]
     };
     
-    console.log('📤 Envoi email Devcom avec signature...');
+    console.log('📤 Envoi email Devcom avec signature et copie...');
     console.log('📧 From:', mailOptions.from);
-    console.log('📧 To:', mailOptions.to);
+    console.log('📧 To (collaborateur):', mailOptions.to);
+    console.log('📧 CC (copie Devcom):', mailOptions.cc);
     console.log('📧 Subject:', mailOptions.subject);
     
     const result = await transporter.sendMail(mailOptions);
