@@ -198,6 +198,8 @@ app.get("/api/migrate-db", async (req, res) => {
     console.log("✅ Colonne contract_signed ajoutée");
     
     await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`);
+    await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`);
+    console.log("✅ Colonne is_active ajoutée");
     console.log("✅ Colonne status ajoutée");
     
     await db.query(`UPDATE collaborators SET contract_signed = FALSE WHERE contract_signed IS NULL`);
