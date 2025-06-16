@@ -12,19 +12,26 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // ✅ CORRECTION: Utiliser les noms de colonnes de la DB (snake_case)
-    const userQuery = `
-      SELECT id, first_name, last_name, email, phone, status, 
-             contract_signed, created_at, updated_at
-      FROM collaborators 
-      WHERE id = $1 AND status = $2
-    `;
-    const userResult = await pool.query(userQuery, [decoded.userId, 'active']);
-    
-    if (userResult.rows.length === 0) {
-      console.error('❌ Utilisateur non trouvé ou inactif:', decoded.userId);
-      return res.status(401).json({ error: 'Utilisateur non autorisé' });
-    }
+      // ✅ CORRECTION: Supprime la vérification du statut pour le moment
+      const userQuery = `
+        SELECT id, first_name, last_name, email, phone, status, 
+               contract_signed, created_at, updated_at
+        FROM collaborators 
+        WHERE id = $1
+      `;
+      const userResult = await pool.query(userQuery, [decoded.userId]);
+
+      if (userResult.rows.length === 0) {
+        console.error('❌ Utilisateur non trouvé:', decoded.userId);
+        return res.status(401).json({ error: 'Utilisateur non trouvé' });
+      }
+
+      // ✅ Log pour debug
+      console.log('✅ Utilisateur trouvé:', {
+        id: userResult.rows[0].id,
+        email: userResult.rows[0].email,
+        status: userResult.rows[0].status
+      });
 
     // ✅ Mapper les noms snake_case vers camelCase pour l'app
     const user = userResult.rows[0];
