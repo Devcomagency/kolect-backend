@@ -12,37 +12,37 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-      // ✅ CORRECTION: Supprime la vérification du statut pour le moment
-      const userQuery = `
-        SELECT id, first_name, last_name, email, phone, status, 
-               contract_signed, created_at, updated_at
-        FROM collaborators 
-        WHERE id = $1
-      `;
-      const userResult = await pool.query(userQuery, [decoded.userId]);
-
-      if (userResult.rows.length === 0) {
-        console.error('❌ Utilisateur non trouvé:', decoded.userId);
-        return res.status(401).json({ error: 'Utilisateur non trouvé' });
-      }
-
-      // ✅ Log pour debug
-      console.log('✅ Utilisateur trouvé:', {
-        id: userResult.rows[0].id,
-        email: userResult.rows[0].email,
-        status: userResult.rows[0].status
-      });
+    // ✅ CORRECTION: Utiliser les noms de colonnes de la DB (snake_case) SANS vérification status
+    const userQuery = `
+      SELECT id, first_name, last_name, email, phone, status, 
+             contract_signed, created_at, updated_at
+      FROM collaborators 
+      WHERE id = $1
+    `;
+    const userResult = await pool.query(userQuery, [decoded.userId]);
+    
+    if (userResult.rows.length === 0) {
+      console.error('❌ Utilisateur non trouvé:', decoded.userId);
+      return res.status(401).json({ error: 'Utilisateur non trouvé' });
+    }
+    
+    // ✅ Log pour debug
+    console.log('✅ Utilisateur trouvé:', {
+      id: userResult.rows[0].id,
+      email: userResult.rows[0].email,
+      status: userResult.rows[0].status
+    });
 
     // ✅ Mapper les noms snake_case vers camelCase pour l'app
     const user = userResult.rows[0];
     req.user = {
       id: user.id,
-      firstName: user.first_name,    // ✅ Mapping snake_case → camelCase
-      lastName: user.last_name,      // ✅ Mapping snake_case → camelCase
+      firstName: user.first_name,
+      lastName: user.last_name,
       email: user.email,
       phone: user.phone,
       status: user.status,
-      contractSigned: user.contract_signed,  // ✅ Mapping snake_case → camelCase
+      contractSigned: user.contract_signed,
       createdAt: user.created_at,
       updatedAt: user.updated_at
     };
@@ -77,8 +77,8 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userResult = await pool.query(
-        'SELECT * FROM collaborators WHERE id = $1 AND status = $2',
-        [decoded.userId, 'active']
+        'SELECT * FROM collaborators WHERE id = $1',
+        [decoded.userId]
       );
       
       if (userResult.rows.length > 0) {
