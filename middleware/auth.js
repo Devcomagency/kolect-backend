@@ -2,24 +2,44 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 
 const authenticateToken = async (req, res, next) => {
+  console.log('🔍 === DEBUG AUTH MIDDLEWARE ===');
+  
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('🔍 Authorization header:', authHeader);
+  console.log('🔍 Token extrait:', token ? token.substring(0, 50) + '...' : 'AUCUN');
+
   if (!token) {
+    console.log('❌ Aucun token fourni');
     return res.status(401).json({ error: 'Token requis' });
   }
 
   try {
+    console.log('🔑 JWT Secret utilisé:', process.env.JWT_SECRET);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token décodé avec succès, userId:', decoded.userId);
     
+    // ✅ CORRECTION : Utiliser uniquement les colonnes qui EXISTENT
     const userQuery = `
-      SELECT * 
+      SELECT 
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        password_hash,
+        status,
+        contract_signed,
+        contract_signed_at,
+        contract_pdf_url
       FROM collaborators 
-      WHERE id = $1    `;
+      WHERE id = $1
+    `;
     const userResult = await pool.query(userQuery, [decoded.userId]);
     
     if (userResult.rows.length === 0) {
-      console.error('❌ Utilisateur non trouvé:', decoded.userId);
+      console.error('❌ Utilisateur non trouvé dans la base:', decoded.userId);
       return res.status(401).json({ error: 'Utilisateur non trouvé' });
     }
     
@@ -30,7 +50,10 @@ const authenticateToken = async (req, res, next) => {
     });
 
     const user = userResult.rows[0];
+    
+    // ✅ CORRECTION : Mapper uniquement les champs qui EXISTENT
     req.user = {
+      userId: user.id, // ⚠️ IMPORTANT : garder userId pour compatibilité
       id: user.id,
       firstName: user.first_name,
       lastName: user.last_name,
@@ -38,17 +61,25 @@ const authenticateToken = async (req, res, next) => {
       phone: user.phone,
       status: user.status,
       contractSigned: user.contract_signed,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at
+      contractSignedAt: user.contract_signed_at, // ✅ Utiliser contract_signed_at au lieu de created_at
+      contractPdfUrl: user.contract_pdf_url
     };
     
     req.userId = decoded.userId;
+    console.log('✅ Authentification réussie pour:', user.email);
     next();
+    
   } catch (error) {
-    console.error('❌ Erreur authentification:', error.message);
+    console.error('❌ Erreur authentification complète:', error);
+    console.error('❌ Type erreur:', error.name);
+    console.error('❌ Message erreur:', error.message);
     
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token expiré' });
+    }
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(403).json({ error: 'Token invalide - signature incorrecte' });
     }
     
     return res.status(403).json({ error: 'Token invalide' });
@@ -69,14 +100,26 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const userResult = await pool.query(
-        'SELECT * FROM collaborators WHERE id = $1',
-        [decoded.userId]
-      );
+      
+      // ✅ CORRECTION : Utiliser uniquement les colonnes qui EXISTENT
+      const userResult = await pool.query(`
+        SELECT 
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          status,
+          contract_signed,
+          contract_signed_at
+        FROM collaborators 
+        WHERE id = $1
+      `, [decoded.userId]);
       
       if (userResult.rows.length > 0) {
         const user = userResult.rows[0];
         req.user = {
+          userId: user.id,
           id: user.id,
           firstName: user.first_name,
           lastName: user.last_name,
@@ -91,6 +134,7 @@ const optionalAuth = async (req, res, next) => {
     
     next();
   } catch (error) {
+    // En cas d'erreur, on continue sans authentification
     next();
   }
 };
@@ -100,4 +144,5 @@ module.exports = {
   requireAdmin,
   optionalAuth
 };
+
 // Force deploy lun. 16 juin 2025 18:39:53 CEST

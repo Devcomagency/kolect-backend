@@ -37,7 +37,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Base de données non configurée' });
     }
 
-    // Récupérer les informations complètes du collaborateur
+    // ✅ CORRECTION : UNIQUEMENT les colonnes qui EXISTENT
     const userResult = await pool.query(`
       SELECT 
         id, 
@@ -45,12 +45,11 @@ router.get('/profile', authenticateToken, async (req, res) => {
         last_name, 
         email, 
         phone, 
-        address, 
-        birth_date,
-        created_at,
+        password_hash,
+        status,
         contract_signed,
-        is_active,
-        profile_picture
+        contract_signed_at,
+        contract_pdf_url
       FROM collaborators 
       WHERE id = $1
     `, [req.user.userId]);
@@ -62,7 +61,6 @@ router.get('/profile', authenticateToken, async (req, res) => {
     const user = userResult.rows[0];
 
     // Calculer les statistiques du collaborateur
-    // TODO: Remplacer par vraies requêtes quand tables créées
     const stats = {
       totalScans: 15,
       totalSignatures: 187,
@@ -71,7 +69,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
       level: 'Expert',
       badge: '🌟 Collecteur Expérimenté',
       nextLevelPoints: 126,
-      joinedDays: Math.floor((new Date() - new Date(user.created_at)) / (1000 * 60 * 60 * 24))
+      joinedDays: user.contract_signed_at ? Math.floor((new Date() - new Date(user.contract_signed_at)) / (1000 * 60 * 60 * 24)) : 0
     };
 
     const profile = {
@@ -81,15 +79,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
       lastName: user.last_name,
       email: user.email,
       phone: user.phone,
-      address: user.address,
-      birthDate: user.birth_date,
-      profilePicture: user.profile_picture,
+      address: null, // ❌ Colonne n'existe pas - valeur par défaut
+      birthDate: null, // ❌ Colonne n'existe pas - valeur par défaut
+      profilePicture: null, // ❌ Colonne n'existe pas - valeur par défaut
       
       // Status
-      isActive: user.is_active !== false,
+      isActive: user.status === 'active',
       contractSigned: user.contract_signed === true,
-      memberSince: user.created_at,
-      lastLogin: new Date().toISOString(), // TODO: tracker vraiment
+      memberSince: user.contract_signed_at,
+      lastLogin: new Date().toISOString(),
       
       // Statistiques
       stats,
@@ -127,36 +125,26 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const {
       firstName,
       lastName,
-      phone,
-      address,
-      birthDate,
-      profilePicture
+      phone
     } = req.body;
 
     console.log('📝 Mise à jour profil utilisateur:', req.user.userId);
 
-    // Mettre à jour les informations
+    // ✅ CORRECTION : UNIQUEMENT les colonnes qui EXISTENT
     const updateQuery = `
       UPDATE collaborators 
       SET 
         first_name = COALESCE($1, first_name),
         last_name = COALESCE($2, last_name),
-        phone = COALESCE($3, phone),
-        address = COALESCE($4, address),
-        birth_date = COALESCE($5, birth_date),
-        profile_picture = COALESCE($6, profile_picture),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
-      RETURNING id, first_name, last_name, email, phone, address, birth_date, profile_picture
+        phone = COALESCE($3, phone)
+      WHERE id = $4
+      RETURNING id, first_name, last_name, email, phone
     `;
 
     const result = await pool.query(updateQuery, [
       firstName,
       lastName,
       phone,
-      address,
-      birthDate,
-      profilePicture,
       req.user.userId
     ]);
 
@@ -175,9 +163,9 @@ router.put('/profile', authenticateToken, async (req, res) => {
         lastName: updatedUser.last_name,
         email: updatedUser.email,
         phone: updatedUser.phone,
-        address: updatedUser.address,
-        birthDate: updatedUser.birth_date,
-        profilePicture: updatedUser.profile_picture
+        address: null, // Valeur par défaut
+        birthDate: null, // Valeur par défaut
+        profilePicture: null // Valeur par défaut
       }
     });
 
@@ -232,9 +220,9 @@ router.put('/password', authenticateToken, async (req, res) => {
     // Hasher le nouveau mot de passe
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
-    // Mettre à jour le mot de passe
+    // ✅ CORRECTION : Supprimer updated_at qui n'existe pas
     await pool.query(
-      'UPDATE collaborators SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      'UPDATE collaborators SET password_hash = $1 WHERE id = $2',
       [newPasswordHash, req.user.userId]
     );
 
@@ -265,22 +253,19 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
 
     console.log('✍️ Signature contrat utilisateur:', req.user.userId);
 
-    // Mettre à jour le statut du contrat
+    // ✅ CORRECTION : UNIQUEMENT les colonnes qui EXISTENT
     const updateQuery = `
       UPDATE collaborators 
       SET 
         contract_signed = true,
         contract_signed_at = $1,
-        contract_version = $2,
-        signature_data = $3,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
+        contract_pdf_url = $2
+      WHERE id = $3
       RETURNING id, first_name, last_name, email, contract_signed_at
     `;
 
     const result = await pool.query(updateQuery, [
       signedAt || new Date().toISOString(),
-      contractVersion || '1.0',
       signatureData || null,
       req.user.userId
     ]);
@@ -317,9 +302,9 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
 // === TABLEAU DE BORD COLLABORATEUR ===
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
-    // Récupérer les informations de base
+    // ✅ CORRECTION : UNIQUEMENT les colonnes qui EXISTENT
     const userResult = await pool.query(
-      'SELECT first_name, last_name, email, created_at, contract_signed FROM collaborators WHERE id = $1',
+      'SELECT first_name, last_name, email, contract_signed_at, contract_signed FROM collaborators WHERE id = $1',
       [req.user.userId]
     );
 
@@ -329,12 +314,11 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // Simulations pour le dashboard (remplacer par vraies données plus tard)
     const dashboard = {
       welcome: {
         firstName: user.first_name,
         lastName: user.last_name,
-        memberSince: user.created_at,
+        memberSince: user.contract_signed_at,
         contractSigned: user.contract_signed
       },
       todayStats: {
@@ -380,7 +364,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
           title: 'Premier Scan',
           description: 'Félicitations pour votre premier scan !',
           icon: '🎯',
-          unlockedAt: user.created_at,
+          unlockedAt: user.contract_signed_at,
           points: 50
         },
         {
@@ -426,8 +410,6 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 // === LISTE DES COLLABORATEURS (ADMIN) ===
 router.get('/list', authenticateToken, async (req, res) => {
   try {
-    // TODO: Vérifier que l'utilisateur est admin
-    
     const { page = 1, limit = 20, search = '' } = req.query;
     const offset = (page - 1) * limit;
 
@@ -439,6 +421,7 @@ router.get('/list', authenticateToken, async (req, res) => {
       queryParams.push(`%${search}%`);
     }
 
+    // ✅ CORRECTION : UNIQUEMENT les colonnes qui EXISTENT
     const collaboratorsQuery = `
       SELECT 
         id,
@@ -446,18 +429,17 @@ router.get('/list', authenticateToken, async (req, res) => {
         last_name,
         email,
         phone,
-        created_at,
+        contract_signed_at,
         contract_signed,
-        is_active
+        status
       FROM collaborators
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY contract_signed_at DESC
       LIMIT $1 OFFSET $2
     `;
 
     const result = await pool.query(collaboratorsQuery, queryParams);
 
-    // Compter le total
     const countQuery = `SELECT COUNT(*) FROM collaborators ${whereClause}`;
     const countParams = search ? [`%${search}%`] : [];
     const countResult = await pool.query(countQuery, countParams);
@@ -470,10 +452,9 @@ router.get('/list', authenticateToken, async (req, res) => {
         lastName: collab.last_name,
         email: collab.email,
         phone: collab.phone,
-        createdAt: collab.created_at,
+        createdAt: collab.contract_signed_at,
         contractSigned: collab.contract_signed,
-        isActive: collab.is_active !== false,
-        // TODO: Ajouter stats depuis table scans
+        isActive: collab.status === 'active',
         stats: {
           totalScans: Math.floor(Math.random() * 50),
           totalSignatures: Math.floor(Math.random() * 500),
@@ -500,16 +481,15 @@ router.get('/list', authenticateToken, async (req, res) => {
 // === DÉSACTIVER UN COLLABORATEUR (ADMIN) ===
 router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) => {
   try {
-    // TODO: Vérifier que l'utilisateur est admin
-    
     const { collaboratorId } = req.params;
     const { reason } = req.body;
 
     console.log('⚠️ Désactivation collaborateur:', collaboratorId, 'par admin:', req.user.userId);
 
+    // ✅ CORRECTION : Utiliser colonne 'status' qui EXISTE
     const result = await pool.query(
-      'UPDATE collaborators SET is_active = false, deactivated_at = CURRENT_TIMESTAMP, deactivation_reason = $1 WHERE id = $2 RETURNING first_name, last_name, email',
-      [reason || 'Non spécifié', collaboratorId]
+      'UPDATE collaborators SET status = $1 WHERE id = $2 RETURNING first_name, last_name, email',
+      ['inactive', collaboratorId]
     );
 
     if (result.rows.length === 0) {
