@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+const db = require("./config/database");
 
 // === IMPORTS DES ROUTES ===
 const authRoutes = require('./routes/auth');
@@ -193,14 +194,14 @@ app.get("/api/migrate-db", async (req, res) => {
   try {
     console.log("🔧 Début migration base de données...");
     
-    await pool.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS contract_signed BOOLEAN DEFAULT FALSE`);
+    await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS contract_signed BOOLEAN DEFAULT FALSE`);
     console.log("✅ Colonne contract_signed ajoutée");
     
-    await pool.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`);
+    await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`);
     console.log("✅ Colonne status ajoutée");
     
-    await pool.query(`UPDATE collaborators SET contract_signed = FALSE WHERE contract_signed IS NULL`);
-    await pool.query(`UPDATE collaborators SET status = 'active' WHERE status IS NULL`);
+    await db.query(`UPDATE collaborators SET contract_signed = FALSE WHERE contract_signed IS NULL`);
+    await db.query(`UPDATE collaborators SET status = 'active' WHERE status IS NULL`);
     console.log("✅ Utilisateurs existants mis à jour");
     
     res.json({ success: true, message: "Migration terminée avec succès" });
