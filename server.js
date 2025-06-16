@@ -187,6 +187,28 @@ app.get('/api/health', (req, res) => {
 });
 
 // === DÉMARRAGE SERVEUR ===
+
+// ✅ ENDPOINT TEMPORAIRE DE MIGRATION
+app.get("/api/migrate-db", async (req, res) => {
+  try {
+    console.log("🔧 Début migration base de données...");
+    
+    await pool.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS contract_signed BOOLEAN DEFAULT FALSE`);
+    console.log("✅ Colonne contract_signed ajoutée");
+    
+    await pool.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`);
+    console.log("✅ Colonne status ajoutée");
+    
+    await pool.query(`UPDATE collaborators SET contract_signed = FALSE WHERE contract_signed IS NULL`);
+    await pool.query(`UPDATE collaborators SET status = 'active' WHERE status IS NULL`);
+    console.log("✅ Utilisateurs existants mis à jour");
+    
+    res.json({ success: true, message: "Migration terminée avec succès" });
+  } catch (error) {
+    console.error("❌ Erreur migration:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur Kolect démarré sur le port ${PORT}`);
   console.log(`🌐 Interface test: http://localhost:${PORT}/test.html`);
