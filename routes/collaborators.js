@@ -513,3 +513,4 @@ router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) 
 });
 
 module.exports = router;
+// Fixed for Render compatibility lun. 16 juin 2025 23:53:17 CEST
