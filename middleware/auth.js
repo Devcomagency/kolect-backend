@@ -13,11 +13,9 @@ const authenticateToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     const userQuery = `
-      SELECT id, first_name, last_name, email, phone, status, 
-             contract_signed, created_at, updated_at
+      SELECT * 
       FROM collaborators 
-      WHERE id = $1
-    `;
+      WHERE id = $1    `;
     const userResult = await pool.query(userQuery, [decoded.userId]);
     
     if (userResult.rows.length === 0) {
