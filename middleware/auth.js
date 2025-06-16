@@ -12,7 +12,6 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // ✅ CORRECTION: Utiliser les noms de colonnes de la DB (snake_case) SANS vérification status
     const userQuery = `
       SELECT id, first_name, last_name, email, phone, status, 
              contract_signed, created_at, updated_at
@@ -26,14 +25,12 @@ const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ error: 'Utilisateur non trouvé' });
     }
     
-    // ✅ Log pour debug
     console.log('✅ Utilisateur trouvé:', {
       id: userResult.rows[0].id,
       email: userResult.rows[0].email,
       status: userResult.rows[0].status
     });
 
-    // ✅ Mapper les noms snake_case vers camelCase pour l'app
     const user = userResult.rows[0];
     req.user = {
       id: user.id,
@@ -61,14 +58,12 @@ const authenticateToken = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  // L'admin est défini par l'email dans .env
   if (req.user.email !== process.env.ADMIN_EMAIL) {
     return res.status(403).json({ error: 'Accès administrateur requis' });
   }
   next();
 };
 
-// ✅ Middleware optionnel pour les endpoints qui peuvent fonctionner avec ou sans auth
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
@@ -98,7 +93,6 @@ const optionalAuth = async (req, res, next) => {
     
     next();
   } catch (error) {
-    // En cas d'erreur, continuer sans auth
     next();
   }
 };
