@@ -8,10 +8,10 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// ✅ MIDDLEWARE CENTRAL (remplace le middleware custom)
-const authenticateToken = require('../middleware/auth');
+// ✅ IMPORT CORRECT - Destructurer l'objet
+const { authenticateToken } = require('../middleware/auth');
 
-// === SOUMETTRE UN SCAN - VERSION SIMPLIFIÉE POUR TEST ===
+// === SOUMETTRE UN SCAN ===
 router.post('/submit', authenticateToken, async (req, res) => {
   try {
     const { initiative, signatures, quality, confidence } = req.body;
@@ -21,7 +21,6 @@ router.post('/submit', authenticateToken, async (req, res) => {
     console.log('🌿 Initiative:', initiative);
     console.log('✍️ Signatures:', signatures);
 
-    // Validation basique
     if (!initiative || signatures === undefined) {
       return res.status(400).json({
         success: false,
@@ -29,7 +28,6 @@ router.post('/submit', authenticateToken, async (req, res) => {
       });
     }
 
-    // Réponse succès avec infos auth
     res.json({
       success: true,
       message: `✅ Scanner 100% fonctionnel pour ${req.user.firstName}!`,
@@ -51,34 +49,6 @@ router.post('/submit', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur submit scan:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// === ENDPOINT DE TEST DE SANTÉ ===
-router.get('/health', authenticateToken, async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      message: 'API Scans opérationnelle',
-      auth: {
-        userId: req.user.userId,
-        firstName: req.user.firstName,
-        email: req.user.email
-      },
-      endpoints: [
-        'POST /submit',
-        'GET /health'
-      ],
-      timestamp: new Date().toISOString(),
-      status: '🎉 PROBLÈME AUTH RÉSOLU - APP KOLECT V1 OPÉRATIONNELLE!'
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur health check:', error);
     res.status(500).json({
       success: false,
       error: error.message
