@@ -58,4 +58,32 @@ router.post('/submit', authenticateToken, async (req, res) => {
   }
 });
 
+// === ENDPOINT DE TEST DE SANTÉ ===
+router.get('/health', authenticateToken, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'API Scans opérationnelle',
+      auth: {
+        userId: req.user.userId,
+        firstName: req.user.firstName,
+        email: req.user.email
+      },
+      endpoints: [
+        'POST /submit',
+        'GET /health'
+      ],
+      timestamp: new Date().toISOString(),
+      status: '🎉 PROBLÈME AUTH RÉSOLU - APP KOLECT V1 OPÉRATIONNELLE!'
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur health check:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
