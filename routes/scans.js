@@ -3,64 +3,36 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 
-// Configuration PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// ✅ MIDDLEWARE AUTH - EXACTEMENT COMME middleware/auth.js
 const authenticateToken = async (req, res, next) => {
-  console.log('🔍 === DEBUG AUTH MIDDLEWARE ===');
-  
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  console.log('🔍 Authorization header:', authHeader);
-  console.log('🔍 Token extrait:', token ? token.substring(0, 50) + '...' : 'AUCUN');
-
   if (!token) {
-    console.log('❌ Aucun token fourni');
     return res.status(401).json({ error: 'Token requis' });
   }
 
   try {
-    console.log('🔑 JWT Secret utilisé:', process.env.JWT_SECRET);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Token décodé avec succès, userId:', decoded.userId);
+    // ✅ UTILISER EXACTEMENT LE SECRET DE RENDER
+    const jwtSecret = process.env.JWT_SECRET;
+    console.log('🔑 JWT Secret défini:', !!jwtSecret);
+    console.log('🔑 JWT Secret preview:', jwtSecret ? jwtSecret.substring(0, 20) + '...' : 'UNDEFINED');
     
-    // ✅ EXACTEMENT LA MÊME REQUÊTE QUE middleware/auth.js
-    const userQuery = `
-      SELECT 
-        id,
-        first_name,
-        last_name,
-        email,
-        phone,
-        password_hash,
-        status,
-        contract_signed,
-        contract_signed_at,
-        contract_pdf_url
-      FROM collaborators 
-      WHERE id = $1
-    `;
+    const decoded = jwt.verify(token, jwtSecret);
+    console.log('✅ Token décodé, userId:', decoded.userId);
+    
+    const userQuery = `SELECT id, first_name, last_name, email, phone, status FROM collaborators WHERE id = $1`;
     const userResult = await pool.query(userQuery, [decoded.userId]);
     
     if (userResult.rows.length === 0) {
-      console.error('❌ Utilisateur non trouvé dans la base:', decoded.userId);
       return res.status(401).json({ error: 'Utilisateur non trouvé' });
     }
     
-    console.log('✅ Utilisateur trouvé:', {
-      id: userResult.rows[0].id,
-      email: userResult.rows[0].email,
-      status: userResult.rows[0].status
-    });
-
     const user = userResult.rows[0];
-    
-    // ✅ EXACTEMENT LE MÊME MAPPING QUE middleware/auth.js
     req.user = {
       userId: user.id,
       id: user.id,
@@ -68,40 +40,25 @@ const authenticateToken = async (req, res, next) => {
       lastName: user.last_name,
       email: user.email,
       phone: user.phone,
-      status: user.status,
-      contractSigned: user.contract_signed,
-      contractSignedAt: user.contract_signed_at,
-      contractPdfUrl: user.contract_pdf_url
+      status: user.status
     };
     
-    req.userId = decoded.userId;
-    console.log('✅ Authentification réussie pour:', user.email);
+    console.log('✅ Auth réussie pour:', user.email);
     next();
     
   } catch (error) {
-    console.error('❌ Erreur authentification complète:', error);
-    console.error('❌ Type erreur:', error.name);
-    console.error('❌ Message erreur:', error.message);
-    
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expiré' });
-    }
-    
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(403).json({ error: 'Token invalide - signature incorrecte' });
-    }
-    
-    return res.status(403).json({ error: 'Token invalide' });
+    console.error('❌ Erreur auth:', error.name, error.message);
+    return res.status(403).json({ 
+      error: 'Token invalide', 
+      type: error.name,
+      details: error.message 
+    });
   }
 };
 
-// === SOUMETTRE UN SCAN ===
 router.post('/submit', authenticateToken, async (req, res) => {
   try {
     const { initiative, signatures, quality, confidence } = req.body;
-
-    console.log('📸 Scan reçu de:', req.user.firstName);
-    console.log('🌿 Initiative:', initiative, '✍️ Signatures:', signatures);
 
     if (!initiative || signatures === undefined) {
       return res.status(400).json({
