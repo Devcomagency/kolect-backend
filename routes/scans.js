@@ -1,4 +1,4 @@
-const express = require('express');
+cconst express = require('express');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
@@ -357,7 +357,7 @@ router.get('/force-setup', async (req, res) => {
   }
 });
 
-// GET /api/scans/debug/tables - Interface de debug avancée
+// GET /api/scans/debug/tables - Interface de debug simplifiée
 router.get('/debug/tables', async (req, res) => {
   try {
     console.log('🔍 === DEBUG TABLES ===');
@@ -412,572 +412,111 @@ router.get('/debug/tables', async (req, res) => {
     const initiatives = queries[1].status === 'fulfilled' ? queries[1].value.rows : [];
     const scans = queries[2].status === 'fulfilled' ? queries[2].value.rows : [];
 
-    // Statistiques par initiative
-    const statsQuery = `
-      SELECT 
-        i.name,
-        i.objective,
-        COUNT(s.id) as total_scans,
-        COALESCE(SUM(s.signatures), 0) as total_signatures,
-        ROUND(AVG(s.signatures), 1) as avg_signatures,
-        ROUND(AVG(s.quality), 1) as avg_quality
-      FROM initiatives i
-      LEFT JOIN scans s ON i.id = s.initiative_id
-      GROUP BY i.id, i.name, i.objective
-      ORDER BY total_signatures DESC
-    `;
-
-    const statsResult = await pool.query(statsQuery);
-    const initiativeStats = statsResult.rows;
-
-    // Top collecteurs
-    const topCollectorsQuery = `
-      SELECT 
-        c.first_name,
-        c.last_name,
-        COUNT(s.id) as total_scans,
-        SUM(s.signatures) as total_signatures
-      FROM collaborators c
-      LEFT JOIN scans s ON c.id = s.user_id
-      GROUP BY c.id, c.first_name, c.last_name
-      HAVING COUNT(s.id) > 0
-      ORDER BY total_signatures DESC
-      LIMIT 10
-    `;
-
-    const topCollectorsResult = await pool.query(topCollectorsQuery);
-    const topCollectors = topCollectorsResult.rows;
-
-    // Générer la page HTML
+    // Créer une page HTML simple
     const debugHTML = `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔍 KOLECT Debug - Monitoring Système</title>
+    <title>🔍 KOLECT Debug</title>
     <style>
-        :root {
-            --kolect-primary: #4ECDC4;
-            --kolect-secondary: #35A085;
-            --kolect-accent: #44B9A6;
-            --kolect-dark: #2C3E50;
-            --shadow: 0 4px 20px rgba(78, 205, 196, 0.15);
-            --gradient: linear-gradient(135deg, var(--kolect-primary), var(--kolect-secondary));
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: var(--kolect-dark);
-        }
-
-        .debug-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow);
-            text-align: center;
-        }
-
-        .header h1 {
-            background: var(--gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 1.1rem;
-        }
-
-        .timestamp {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 10px;
-            margin-top: 15px;
-            font-family: monospace;
-            color: #666;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            text-align: center;
-            box-shadow: var(--shadow);
-            transition: transform 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            background: var(--gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .stat-label {
-            color: #666;
-            font-size: 0.9rem;
-            margin-top: 5px;
-        }
-
-        .section {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow);
-        }
-
-        .section h2 {
-            color: var(--kolect-dark);
-            margin-bottom: 20px;
-            font-size: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-        }
-
-        th {
-            background: var(--gradient);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
-
-        td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #eee;
-        }
-
-        tr:hover {
-            background: #f8f9fa;
-        }
-
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .badge.active {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge.inactive {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .progress-bar {
-            background: #e9ecef;
-            border-radius: 10px;
-            height: 20px;
-            overflow: hidden;
-            margin: 5px 0;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: var(--gradient);
-            transition: width 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .refresh-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: var(--gradient);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            font-size: 1.5rem;
-            cursor: pointer;
-            box-shadow: var(--shadow);
-            transition: transform 0.3s ease;
-        }
-
-        .refresh-btn:hover {
-            transform: scale(1.1);
-        }
-
-        .metric {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .metric:last-child {
-            border-bottom: none;
-        }
-
-        .metric-label {
-            color: #666;
-        }
-
-        .metric-value {
-            font-weight: 600;
-            color: var(--kolect-dark);
-        }
-
-        .alert {
-            background: #fff3cd;
-            border: 1px solid #ffeeba;
-            color: #856404;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-
-        .success {
-            background: #d4edda;
-            border-color: #c3e6cb;
-            color: #155724;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: #4ECDC4; color: white; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
+        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #35A085; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .stat { display: inline-block; background: #4ECDC4; color: white; padding: 10px 20px; margin: 5px; border-radius: 5px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="debug-container">
+    <div class="container">
         <div class="header">
-            <h1>🔍 KOLECT Debug</h1>
-            <p>Monitoring système et base de données</p>
-            <div class="timestamp">
-                Dernière mise à jour: ${new Date().toLocaleString('fr-FR')}
-            </div>
-        </div>
-
-        <div class="alert success">
-            ✅ <strong>Système opérationnel</strong> - Toutes les connexions database fonctionnent correctement
-        </div>
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number">${tablesList.find(t => t.name === 'collaborators')?.count || 0}</div>
-                <div class="stat-label">Collaborateurs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${tablesList.find(t => t.name === 'initiatives')?.count || 0}</div>
-                <div class="stat-label">Initiatives</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${tablesList.find(t => t.name === 'scans')?.count || 0}</div>
-                <div class="stat-label">Scans Total</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${tablesList.length}</div>
-                <div class="stat-label">Tables DB</div>
-            </div>
+            <h1>🔍 KOLECT Debug Interface</h1>
+            <p>Base de données - ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
         <div class="section">
-            <h2>📊 Tables de la Base de Données</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
+            <h2>📊 Statistiques</h2>
+            <div class="stat">👥 ${tablesList.find(t => t.name === 'collaborators')?.count || 0} Collaborateurs</div>
+            <div class="stat">🎯 ${tablesList.find(t => t.name === 'initiatives')?.count || 0} Initiatives</div>
+            <div class="stat">📸 ${tablesList.find(t => t.name === 'scans')?.count || 0} Scans</div>
+            <div class="stat">📋 ${tablesList.length} Tables</div>
+        </div>
+
+        <div class="section">
+            <h2>📋 Tables de la Base</h2>
+            <table>
+                <thead>
+                    <tr><th>Table</th><th>Entrées</th><th>Propriétaire</th></tr>
+                </thead>
+                <tbody>
+                    ${tablesList.map(table => `
                         <tr>
-                            <th>Nom de la Table</th>
-                            <th>Nombre d'Entrées</th>
-                            <th>Propriétaire</th>
-                            <th>Statut</th>
+                            <td><strong>${table.name}</strong></td>
+                            <td>${table.count}</td>
+                            <td>${table.owner}</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        ${tablesList.map(table => `
-                            <tr>
-                                <td><strong>${table.name}</strong></td>
-                                <td>${table.count}</td>
-                                <td>${table.owner}</td>
-                                <td>
-                                    <span class="badge ${table.count > 0 ? 'active' : 'inactive'}">
-                                        ${table.count > 0 ? 'Active' : 'Vide'}
-                                    </span>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
 
         ${initiatives.length > 0 ? `
         <div class="section">
-            <h2>🎯 Initiatives Configurées</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
+            <h2>🎯 Initiatives</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Nom</th><th>Description</th><th>Objectif</th><th>Couleur</th></tr>
+                </thead>
+                <tbody>
+                    ${initiatives.map(init => `
                         <tr>
-                            <th>Initiative</th>
-                            <th>Description</th>
-                            <th>Objectif</th>
-                            <th>Couleur</th>
-                            <th>Statut</th>
+                            <td>${init.id}</td>
+                            <td><strong>${init.name}</strong></td>
+                            <td>${init.description || 'N/A'}</td>
+                            <td>${init.objective || 0}</td>
+                            <td style="background: ${init.color}; color: white;">${init.color}</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        ${initiatives.map(initiative => `
-                            <tr>
-                                <td><strong>${initiative.name}</strong></td>
-                                <td>${initiative.description || 'N/A'}</td>
-                                <td>${initiative.objective ? initiative.objective.toLocaleString() : 'N/A'} signatures</td>
-                                <td>
-                                    <div style="width: 20px; height: 20px; background: ${initiative.color || '#4ECDC4'}; border-radius: 50%; display: inline-block;"></div>
-                                    ${initiative.color || '#4ECDC4'}
-                                </td>
-                                <td>
-                                    <span class="badge ${initiative.status === 'active' ? 'active' : 'inactive'}">
-                                        ${initiative.status || 'active'}
-                                    </span>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        ` : ''}
-
-        ${initiativeStats.length > 0 ? `
-        <div class="section">
-            <h2>📈 Statistiques par Initiative</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Initiative</th>
-                            <th>Objectif</th>
-                            <th>Scans</th>
-                            <th>Signatures</th>
-                            <th>Moyenne/Scan</th>
-                            <th>Qualité Moy.</th>
-                            <th>Progression</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${initiativeStats.map(stat => {
-                            const progress = stat.objective > 0 ? Math.min((stat.total_signatures / stat.objective) * 100, 100) : 0;
-                            return `
-                                <tr>
-                                    <td><strong>${stat.name}</strong></td>
-                                    <td>${stat.objective ? stat.objective.toLocaleString() : 'N/A'}</td>
-                                    <td>${stat.total_scans}</td>
-                                    <td><strong>${parseInt(stat.total_signatures).toLocaleString()}</strong></td>
-                                    <td>${stat.avg_signatures || 0}</td>
-                                    <td>${stat.avg_quality || 0}%</td>
-                                    <td>
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: ${progress}%">
-                                                ${progress.toFixed(1)}%
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        ` : ''}
-
-        ${topCollectors.length > 0 ? `
-        <div class="section">
-            <h2>🏆 Top Collecteurs</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Rang</th>
-                            <th>Collecteur</th>
-                            <th>Scans</th>
-                            <th>Signatures</th>
-                            <th>Moyenne/Scan</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${topCollectors.map((collector, index) => `
-                            <tr>
-                                <td><strong>#${index + 1}</strong></td>
-                                <td>${collector.first_name} ${collector.last_name}</td>
-                                <td>${collector.total_scans}</td>
-                                <td><strong>${parseInt(collector.total_signatures).toLocaleString()}</strong></td>
-                                <td>${(collector.total_signatures / collector.total_scans).toFixed(1)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        ` : ''}
-
-        ${collaborators.length > 0 ? `
-        <div class="section">
-            <h2>👥 Collaborateurs Récents</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nom</th>
-                            <th>Email</th>
-                            <th>Statut</th>
-                            <th>Inscription</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${collaborators.map(collab => `
-                            <tr>
-                                <td><strong>${collab.id}</strong></td>
-                                <td>${collab.first_name} ${collab.last_name}</td>
-                                <td>${collab.email}</td>
-                                <td>
-                                    <span class="badge ${collab.status === 'active' ? 'active' : 'inactive'}">
-                                        ${collab.status || 'active'}
-                                    </span>
-                                </td>
-                                <td>${new Date(collab.created_at).toLocaleDateString('fr-FR')}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
         ` : ''}
 
         ${scans.length > 0 ? `
         <div class="section">
             <h2>📸 Scans Récents</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Collecteur</th><th>Initiative</th><th>Signatures</th><th>Qualité</th><th>Date</th></tr>
+                </thead>
+                <tbody>
+                    ${scans.map(scan => `
                         <tr>
-                            <th>ID</th>
-                            <th>Collecteur</th>
-                            <th>Initiative</th>
-                            <th>Signatures</th>
-                            <th>Qualité</th>
-                            <th>Confiance</th>
-                            <th>Date</th>
+                            <td>${scan.id}</td>
+                            <td>${scan.first_name} ${scan.last_name}</td>
+                            <td><strong>${scan.initiative_name}</strong></td>
+                            <td><strong>${scan.signatures}</strong></td>
+                            <td>${scan.quality}%</td>
+                            <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        ${scans.map(scan => `
-                            <tr>
-                                <td><strong>${scan.id}</strong></td>
-                                <td>${scan.first_name} ${scan.last_name}</td>
-                                <td><strong>${scan.initiative_name}</strong></td>
-                                <td><strong>${scan.signatures}</strong></td>
-                                <td>
-                                    <span style="color: ${scan.quality >= 90 ? '#28a745' : scan.quality >= 70 ? '#ffc107' : '#dc3545'}">
-                                        ${scan.quality}%
-                                    </span>
-                                </td>
-                                <td>${scan.confidence}%</td>
-                                <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
         ` : ''}
 
         <div class="section">
-            <h2>⚙️ Actions Disponibles</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
-                <div class="metric">
-                    <span class="metric-label">🔧 Interface Admin</span>
-                    <span class="metric-value">
-                        <a href="/api/scans/admin" style="color: var(--kolect-primary); text-decoration: none;">
-                            Accéder →
-                        </a>
-                    </span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">📊 API Initiatives</span>
-                    <span class="metric-value">
-                        <a href="/api/scans/initiatives" style="color: var(--kolect-primary); text-decoration: none;">
-                            Tester →
-                        </a>
-                    </span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">🔄 Reconfigurer</span>
-                    <span class="metric-value">
-                        <a href="/api/scans/force-setup" style="color: var(--kolect-primary); text-decoration: none;">
-                            Setup →
-                        </a>
-                    </span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">💡 Health Check</span>
-                    <span class="metric-value">
-                        <a href="/api/health" style="color: var(--kolect-primary); text-decoration: none;">
-                            Status →
-                        </a>
-                    </span>
-                </div>
-            </div>
+            <h2>🔗 Liens Utiles</h2>
+            <p><a href="/api/scans/admin">🎯 Interface Admin</a></p>
+            <p><a href="/api/scans/force-setup">🔧 Reconfigurer</a></p>
+            <p><a href="/api/health">💚 Health Check</a></p>
         </div>
     </div>
-
-    <button class="refresh-btn" onclick="window.location.reload()">
-        🔄
-    </button>
 </body>
 </html>
     `;
@@ -994,14 +533,14 @@ router.get('/debug/tables', async (req, res) => {
   }
 });
 
-// GET /api/scans/admin - Interface d'administration HTML complète
+// GET /api/scans/admin - Interface d'administration simplifiée
 router.get('/admin', async (req, res) => {
   try {
-    console.log('🎨 === INTERFACE ADMIN HTML ===');
+    console.log('🎨 === INTERFACE ADMIN ===');
 
     // Récupérer toutes les données
     const [collaboratorsResult, initiativesResult, scansResult] = await Promise.all([
-      pool.query('SELECT * FROM collaborators ORDER BY id DESC'),
+      pool.query('SELECT * FROM collaborators ORDER BY id DESC LIMIT 20'),
       pool.query('SELECT * FROM initiatives ORDER BY id ASC'),
       pool.query(`
         SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
@@ -1009,7 +548,7 @@ router.get('/admin', async (req, res) => {
         LEFT JOIN initiatives i ON s.initiative_id = i.id 
         LEFT JOIN collaborators c ON s.user_id = c.id 
         ORDER BY s.created_at DESC 
-        LIMIT 50
+        LIMIT 30
       `)
     ]);
 
@@ -1017,750 +556,181 @@ router.get('/admin', async (req, res) => {
     const initiatives = initiativesResult.rows;
     const scans = scansResult.rows;
 
-    // Interface HTML complète
+    // Interface HTML simplifiée
     const adminHTML = `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎯 KOLECT Admin Pro - Interface de Gestion</title>
+    <title>🎯 KOLECT Admin</title>
     <style>
-        :root {
-            --kolect-primary: #4ECDC4;
-            --kolect-secondary: #35A085;
-            --kolect-accent: #44B9A6;
-            --kolect-dark: #2C3E50;
-            --kolect-light: #ECF0F1;
-            --shadow: 0 4px 20px rgba(78, 205, 196, 0.15);
-            --gradient: linear-gradient(135deg, var(--kolect-primary), var(--kolect-secondary));
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: var(--kolect-dark);
-        }
-
-        .admin-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow);
-            text-align: center;
-        }
-
-        .header h1 {
-            background: var(--gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 1.1rem;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            text-align: center;
-            box-shadow: var(--shadow);
-            transition: transform 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            background: var(--gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .stat-label {
-            color: #666;
-            font-size: 0.9rem;
-            margin-top: 5px;
-        }
-
-        .tabs {
-            display: flex;
-            background: white;
-            border-radius: 15px;
-            padding: 10px;
-            margin-bottom: 20px;
-            box-shadow: var(--shadow);
-        }
-
-        .tab-button {
-            flex: 1;
-            padding: 15px 20px;
-            border: none;
-            background: transparent;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            color: #666;
-        }
-
-        .tab-button.active {
-            background: var(--gradient);
-            color: white;
-            box-shadow: 0 4px 15px rgba(78, 205, 196, 0.3);
-        }
-
-        .tab-content {
-            display: none;
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: var(--shadow);
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-        }
-
-        th {
-            background: var(--gradient);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
-
-        td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #eee;
-        }
-
-        tr:hover {
-            background: #f8f9fa;
-        }
-
-        .editable {
-            background: transparent;
-            border: 1px solid transparent;
-            padding: 5px;
-            border-radius: 4px;
-            width: 100%;
-        }
-
-        .editable:focus {
-            border-color: var(--kolect-primary);
-            outline: none;
-            background: #f0f9ff;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .btn-primary {
-            background: var(--gradient);
-            color: white;
-        }
-
-        .btn-danger {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .btn-success {
-            background: #27ae60;
-            color: white;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-
-        .actions-bar {
-            margin-bottom: 20px;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .search-box {
-            padding: 10px 15px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            flex: 1;
-            min-width: 200px;
-        }
-
-        .search-box:focus {
-            border-color: var(--kolect-primary);
-            outline: none;
-        }
-
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .badge.active {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge.inactive {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: white;
-            margin: 10% auto;
-            padding: 30px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: var(--shadow);
-        }
-
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover {
-            color: #000;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: var(--kolect-dark);
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            border-color: var(--kolect-primary);
-            outline: none;
-        }
-
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 10px;
-            color: white;
-            font-weight: 600;
-            z-index: 1001;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-        }
-
-        .notification.show {
-            transform: translateX(0);
-        }
-
-        .notification.success {
-            background: #27ae60;
-        }
-
-        .notification.error {
-            background: #e74c3c;
-        }
-
-        .export-section {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 15px;
-        }
-
-        .floating-actions {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .fab {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            border: none;
-            background: var(--gradient);
-            color: white;
-            font-size: 1.5rem;
-            cursor: pointer;
-            box-shadow: var(--shadow);
-            transition: all 0.3s ease;
-        }
-
-        .fab:hover {
-            transform: scale(1.1);
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #4ECDC4, #35A085); color: white; padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 30px; }
+        .tabs { display: flex; background: white; border-radius: 10px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .tab { flex: 1; padding: 15px; background: #f8f9fa; cursor: pointer; text-align: center; border: none; font-weight: bold; }
+        .tab.active { background: #4ECDC4; color: white; }
+        .tab-content { display: none; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .tab-content.active { display: block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background: #35A085; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .editable { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; }
+        .btn { padding: 8px 15px; margin: 2px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-primary { background: #4ECDC4; color: white; }
+        .stats { display: flex; gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .stat-number { font-size: 2rem; font-weight: bold; color: #4ECDC4; }
     </style>
 </head>
 <body>
-    <div class="admin-container">
+    <div class="container">
         <div class="header">
             <h1>🎯 KOLECT Admin Pro</h1>
-            <p>Interface de gestion avancée - Base de données</p>
-            <div style="margin-top: 15px; font-size: 0.9rem; color: #666;">
-                Dernière mise à jour: ${new Date().toLocaleString('fr-FR')}
-            </div>
+            <p>Interface de gestion - ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
-        <div class="stats-grid">
+        <div class="stats">
             <div class="stat-card">
                 <div class="stat-number">${collaborators.length}</div>
-                <div class="stat-label">Collaborateurs</div>
+                <div>Collaborateurs</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">${initiatives.length}</div>
-                <div class="stat-label">Initiatives</div>
+                <div>Initiatives</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">${scans.length}</div>
-                <div class="stat-label">Scans Récents</div>
+                <div>Scans</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">${scans.reduce((sum, scan) => sum + (scan.signatures || 0), 0)}</div>
-                <div class="stat-label">Signatures Total</div>
+                <div>Signatures</div>
             </div>
         </div>
 
         <div class="tabs">
-            <button class="fab" onclick="showTab('actions')" title="Actions">⚡</button>
-        <button class="fab" onclick="window.open('/api/scans/debug/tables', '_blank')" title="Debug">🔍</button>
+            <button class="tab active" onclick="showTab('collaborators')">👥 Collaborateurs</button>
+            <button class="tab" onclick="showTab('initiatives')">🎯 Initiatives</button>
+            <button class="tab" onclick="showTab('scans')">📸 Scans</button>
+        </div>
+
+        <div id="collaborators" class="tab-content active">
+            <h2>👥 Collaborateurs</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Prénom</th><th>Nom</th><th>Email</th><th>Statut</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    ${collaborators.map(collab => `
+                        <tr>
+                            <td><strong>${collab.id}</strong></td>
+                            <td><input class="editable" value="${collab.first_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'first_name', this.value)"></td>
+                            <td><input class="editable" value="${collab.last_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'last_name', this.value)"></td>
+                            <td><input class="editable" value="${collab.email || ''}" onchange="updateField('collaborators', ${collab.id}, 'email', this.value)"></td>
+                            <td>
+                                <select class="editable" onchange="updateField('collaborators', ${collab.id}, 'status', this.value)">
+                                    <option value="active" ${collab.status === 'active' ? 'selected' : ''}>Actif</option>
+                                    <option value="inactive" ${collab.status === 'inactive' ? 'selected' : ''}>Inactif</option>
+                                </select>
+                            </td>
+                            <td><button class="btn btn-danger" onclick="deleteRecord('collaborators', ${collab.id})">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="initiatives" class="tab-content">
+            <h2>🎯 Initiatives</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Nom</th><th>Description</th><th>Objectif</th><th>Couleur</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    ${initiatives.map(init => `
+                        <tr>
+                            <td><strong>${init.id}</strong></td>
+                            <td><input class="editable" value="${init.name || ''}" onchange="updateField('initiatives', ${init.id}, 'name', this.value)"></td>
+                            <td><input class="editable" value="${init.description || ''}" onchange="updateField('initiatives', ${init.id}, 'description', this.value)"></td>
+                            <td><input class="editable" type="number" value="${init.objective || 0}" onchange="updateField('initiatives', ${init.id}, 'objective', this.value)"></td>
+                            <td><input class="editable" type="color" value="${init.color || '#4ECDC4'}" onchange="updateField('initiatives', ${init.id}, 'color', this.value)"></td>
+                            <td><button class="btn btn-danger" onclick="deleteRecord('initiatives', ${init.id})">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="scans" class="tab-content">
+            <h2>📸 Scans</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Collecteur</th><th>Initiative</th><th>Signatures</th><th>Qualité</th><th>Date</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    ${scans.map(scan => `
+                        <tr>
+                            <td><strong>${scan.id}</strong></td>
+                            <td>${scan.first_name} ${scan.last_name}</td>
+                            <td><strong>${scan.initiative_name}</strong></td>
+                            <td><input class="editable" type="number" value="${scan.signatures || 0}" onchange="updateField('scans', ${scan.id}, 'signatures', this.value)"></td>
+                            <td><input class="editable" type="number" value="${scan.quality || 85}" onchange="updateField('scans', ${scan.id}, 'quality', this.value)">%</td>
+                            <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td><button class="btn btn-danger" onclick="deleteRecord('scans', ${scan.id})">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script>
-        // Gestion des onglets
         function showTab(tabName) {
-            // Masquer tous les contenus d'onglets
-            const tabContents = document.querySelectorAll('.tab-content');
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            // Désactiver tous les boutons d'onglets
-            const tabButtons = document.querySelectorAll('.tab-button');
-            tabButtons.forEach(button => button.classList.remove('active'));
-
-            // Afficher le contenu sélectionné
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
-
-            // Activer le bouton sélectionné
             event.target.classList.add('active');
         }
 
-        // Filtrage des tableaux
-        function filterTable(tableId, searchValue) {
-            const table = document.getElementById(tableId);
-            const rows = table.getElementsByTagName('tr');
-
-            for (let i = 1; i < rows.length; i++) { // Commencer à 1 pour ignorer l'en-tête
-                const cells = rows[i].getElementsByTagName('td');
-                let found = false;
-
-                for (let j = 0; j < cells.length; j++) {
-                    if (cells[j].textContent.toLowerCase().includes(searchValue.toLowerCase())) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                rows[i].style.display = found ? '' : 'none';
-            }
-        }
-
-        // Mise à jour des champs
         async function updateField(table, id, field, value) {
             try {
                 const response = await fetch(\`/api/scans/admin/update/\${table}/\${id}\`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ field, value })
                 });
-
                 const result = await response.json();
-
                 if (result.success) {
-                    showNotification('✅ Modification sauvegardée', 'success');
+                    alert('✅ Modifié avec succès');
                 } else {
-                    showNotification('❌ Erreur: ' + result.error, 'error');
+                    alert('❌ Erreur: ' + result.error);
                 }
             } catch (error) {
-                showNotification('❌ Erreur de connexion', 'error');
-                console.error('Erreur:', error);
+                alert('❌ Erreur de connexion');
             }
         }
 
-        // Suppression d'enregistrements
         async function deleteRecord(table, id) {
-            if (!confirm('Êtes-vous sûr de vouloir supprimer cet élément ?')) {
-                return;
-            }
-
+            if (!confirm('Supprimer cet élément ?')) return;
             try {
                 const response = await fetch(\`/api/scans/admin/delete/\${table}/\${id}\`, {
                     method: 'DELETE'
                 });
-
                 const result = await response.json();
-
                 if (result.success) {
-                    showNotification('✅ Élément supprimé', 'success');
-                    // Supprimer la ligne du tableau
+                    alert('✅ Supprimé avec succès');
                     event.target.closest('tr').remove();
                 } else {
-                    showNotification('❌ Erreur: ' + result.error, 'error');
+                    alert('❌ Erreur: ' + result.error);
                 }
             } catch (error) {
-                showNotification('❌ Erreur de connexion', 'error');
-                console.error('Erreur:', error);
+                alert('❌ Erreur de connexion');
             }
         }
-
-        // Afficher les notifications
-        function showNotification(message, type) {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.className = \`notification \${type} show\`;
-
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-
-        // Modal d'ajout
-        function showAddModal(type) {
-            const modal = document.getElementById('addModal');
-            const formFields = document.getElementById('formFields');
-            
-            let fieldsHTML = '';
-            
-            if (type === 'collaborator') {
-                fieldsHTML = \`
-                    <div class="form-group">
-                        <label>Prénom</label>
-                        <input type="text" name="first_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Nom</label>
-                        <input type="text" name="last_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Téléphone</label>
-                        <input type="tel" name="phone">
-                    </div>
-                    <div class="form-group">
-                        <label>Mot de passe</label>
-                        <input type="password" name="password" required>
-                    </div>
-                \`;
-            } else if (type === 'initiative') {
-                fieldsHTML = \`
-                    <div class="form-group">
-                        <label>Nom</label>
-                        <input type="text" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea name="description"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Objectif (signatures)</label>
-                        <input type="number" name="objective" value="1000">
-                    </div>
-                    <div class="form-group">
-                        <label>Couleur</label>
-                        <input type="color" name="color" value="#4ECDC4">
-                    </div>
-                \`;
-            } else if (type === 'scan') {
-                fieldsHTML = \`
-                    <div class="form-group">
-                        <label>Utilisateur ID</label>
-                        <input type="number" name="user_id" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Initiative ID</label>
-                        <input type="number" name="initiative_id" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Signatures</label>
-                        <input type="number" name="signatures" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Qualité (%)</label>
-                        <input type="number" name="quality" value="85" min="0" max="100">
-                    </div>
-                    <div class="form-group">
-                        <label>Confiance (%)</label>
-                        <input type="number" name="confidence" value="85" min="0" max="100">
-                    </div>
-                    <div class="form-group">
-                        <label>Notes</label>
-                        <textarea name="notes"></textarea>
-                    </div>
-                \`;
-            }
-            
-            formFields.innerHTML = fieldsHTML;
-            modal.style.display = 'block';
-            
-            // Gérer la soumission du formulaire
-            document.getElementById('addForm').onsubmit = async function(e) {
-                e.preventDefault();
-                await addRecord(type, new FormData(this));
-            };
-        }
-
-        function closeModal() {
-            document.getElementById('addModal').style.display = 'none';
-        }
-
-        // Ajouter un nouvel enregistrement
-        async function addRecord(type, formData) {
-            const data = {};
-            for (let [key, value] of formData.entries()) {
-                data[key] = value;
-            }
-
-            try {
-                const response = await fetch(\`/api/scans/admin/add/\${type}\`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showNotification('✅ Élément ajouté avec succès', 'success');
-                    closeModal();
-                    // Recharger la page pour voir le nouvel élément
-                    setTimeout(() => window.location.reload(), 1000);
-                } else {
-                    showNotification('❌ Erreur: ' + result.error, 'error');
-                }
-            } catch (error) {
-                showNotification('❌ Erreur de connexion', 'error');
-                console.error('Erreur:', error);
-            }
-        }
-
-        // Export de tableaux
-        function exportTable(tableName) {
-            const table = document.getElementById(tableName + '-table');
-            const rows = table.querySelectorAll('tr');
-            let csv = '';
-
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('th, td');
-                const rowData = [];
-                
-                cells.forEach(cell => {
-                    // Prendre le texte visible, pas les inputs
-                    const input = cell.querySelector('input, select');
-                    const text = input ? input.value : cell.textContent.trim();
-                    rowData.push('"' + text.replace(/"/g, '""') + '"');
-                });
-                
-                csv += rowData.join(',') + '\\n';
-            });
-
-            // Télécharger le fichier CSV
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = \`kolect_\${tableName}_\${new Date().toISOString().split('T')[0]}.csv\`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-
-            showNotification('📊 Export CSV généré', 'success');
-        }
-
-        // Export de toutes les données
-        async function exportAll(format) {
-            try {
-                const response = await fetch(\`/api/scans/admin/export?format=\${format}\`);
-                const blob = await response.blob();
-                
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = \`kolect_full_export_\${new Date().toISOString().split('T')[0]}.\${format}\`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                showNotification(\`📊 Export \${format.toUpperCase()} généré\`, 'success');
-            } catch (error) {
-                showNotification('❌ Erreur d\\'export', 'error');
-                console.error('Erreur:', error);
-            }
-        }
-
-        // Actions d'administration
-        async function performAction(action) {
-            const confirmMessages = {
-                'cleanup': 'Nettoyer les données temporaires ?',
-                'backup': 'Créer une sauvegarde de la base ?',
-                'reset-setup': 'Reconfigurer la base de données ?',
-                'reset-all': 'ATTENTION: Supprimer TOUTES les données ?'
-            };
-
-            if (confirmMessages[action] && !confirm(confirmMessages[action])) {
-                return;
-            }
-
-            try {
-                const response = await fetch(\`/api/scans/admin/action/\${action}\`, {
-                    method: 'POST'
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showNotification(\`✅ \${result.message}\`, 'success');
-                    if (action.includes('reset')) {
-                        setTimeout(() => window.location.reload(), 2000);
-                    }
-                } else {
-                    showNotification('❌ Erreur: ' + result.error, 'error');
-                }
-            } catch (error) {
-                showNotification('❌ Erreur de connexion', 'error');
-                console.error('Erreur:', error);
-            }
-        }
-
-        // Génération de rapports
-        async function generateReport(type) {
-            try {
-                const response = await fetch(\`/api/scans/admin/report/\${type}\`);
-                const blob = await response.blob();
-                
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = \`kolect_rapport_\${type}_\${new Date().toISOString().split('T')[0]}.pdf\`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                showNotification(\`📊 Rapport \${type} généré\`, 'success');
-            } catch (error) {
-                showNotification('❌ Erreur de génération', 'error');
-                console.error('Erreur:', error);
-            }
-        }
-
-        // Fermer la modal en cliquant à l'extérieur
-        window.onclick = function(event) {
-            const modal = document.getElementById('addModal');
-            if (event.target === modal) {
-                closeModal();
-            }
-        }
-
-        // Auto-refresh toutes les 5 minutes
-        setInterval(() => {
-            const lastRefresh = document.querySelector('.header .timestamp');
-            if (lastRefresh) {
-                lastRefresh.textContent = 'Dernière mise à jour: ' + new Date().toLocaleString('fr-FR');
-            }
-        }, 300000);
     </script>
 </body>
 </html>
@@ -1778,13 +748,12 @@ router.get('/admin', async (req, res) => {
   }
 });
 
-// Endpoints pour les actions admin (à implémenter selon tes besoins)
+// Endpoints pour les actions admin
 router.put('/admin/update/:table/:id', async (req, res) => {
   try {
     const { table, id } = req.params;
     const { field, value } = req.body;
 
-    // Validation basique
     const allowedTables = ['collaborators', 'initiatives', 'scans'];
     if (!allowedTables.includes(table)) {
       return res.status(400).json({ success: false, error: 'Table non autorisée' });
@@ -1819,214 +788,4 @@ router.delete('/admin/delete/:table/:id', async (req, res) => {
   }
 });
 
-module.exports = router;="tab-button active" onclick="showTab('collaborators')">👥 Collaborateurs</button>
-            <button class="tab-button" onclick="showTab('initiatives')">🎯 Initiatives</button>
-            <button class="tab-button" onclick="showTab('scans')">📸 Scans</button>
-            <button class="tab-button" onclick="showTab('actions')">⚡ Actions</button>
-        </div>
-
-        <!-- Onglet Collaborateurs -->
-        <div id="collaborators" class="tab-content active">
-            <div class="actions-bar">
-                <input type="text" class="search-box" placeholder="Rechercher un collaborateur..." onkeyup="filterTable('collaborators-table', this.value)">
-                <button class="btn btn-primary" onclick="showAddModal('collaborator')">➕ Nouveau Collaborateur</button>
-                <button class="btn btn-success" onclick="exportTable('collaborators')">📊 Exporter CSV</button>
-            </div>
-            
-            <div class="table-container">
-                <table id="collaborators-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Prénom</th>
-                            <th>Nom</th>
-                            <th>Email</th>
-                            <th>Téléphone</th>
-                            <th>Statut</th>
-                            <th>Date Création</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${collaborators.map(collab => `
-                            <tr>
-                                <td><strong>${collab.id}</strong></td>
-                                <td><input class="editable" value="${collab.first_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'first_name', this.value)"></td>
-                                <td><input class="editable" value="${collab.last_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'last_name', this.value)"></td>
-                                <td><input class="editable" value="${collab.email || ''}" onchange="updateField('collaborators', ${collab.id}, 'email', this.value)"></td>
-                                <td><input class="editable" value="${collab.phone || ''}" onchange="updateField('collaborators', ${collab.id}, 'phone', this.value)"></td>
-                                <td>
-                                    <select class="editable" onchange="updateField('collaborators', ${collab.id}, 'status', this.value)">
-                                        <option value="active" ${collab.status === 'active' ? 'selected' : ''}>Actif</option>
-                                        <option value="inactive" ${collab.status === 'inactive' ? 'selected' : ''}>Inactif</option>
-                                        <option value="suspended" ${collab.status === 'suspended' ? 'selected' : ''}>Suspendu</option>
-                                    </select>
-                                </td>
-                                <td>${new Date(collab.created_at).toLocaleDateString('fr-FR')}</td>
-                                <td>
-                                    <button class="btn btn-danger" onclick="deleteRecord('collaborators', ${collab.id})">🗑️</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Onglet Initiatives -->
-        <div id="initiatives" class="tab-content">
-            <div class="actions-bar">
-                <input type="text" class="search-box" placeholder="Rechercher une initiative..." onkeyup="filterTable('initiatives-table', this.value)">
-                <button class="btn btn-primary" onclick="showAddModal('initiative')">➕ Nouvelle Initiative</button>
-                <button class="btn btn-success" onclick="exportTable('initiatives')">📊 Exporter CSV</button>
-            </div>
-            
-            <div class="table-container">
-                <table id="initiatives-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nom</th>
-                            <th>Description</th>
-                            <th>Objectif</th>
-                            <th>Couleur</th>
-                            <th>Statut</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${initiatives.map(initiative => `
-                            <tr>
-                                <td><strong>${initiative.id}</strong></td>
-                                <td><input class="editable" value="${initiative.name || ''}" onchange="updateField('initiatives', ${initiative.id}, 'name', this.value)"></td>
-                                <td><input class="editable" value="${initiative.description || ''}" onchange="updateField('initiatives', ${initiative.id}, 'description', this.value)"></td>
-                                <td><input class="editable" type="number" value="${initiative.objective || 0}" onchange="updateField('initiatives', ${initiative.id}, 'objective', this.value)"></td>
-                                <td>
-                                    <input class="editable" type="color" value="${initiative.color || '#4ECDC4'}" onchange="updateField('initiatives', ${initiative.id}, 'color', this.value)" style="width: 50px;">
-                                    <span style="margin-left: 10px;">${initiative.color || '#4ECDC4'}</span>
-                                </td>
-                                <td>
-                                    <select class="editable" onchange="updateField('initiatives', ${initiative.id}, 'status', this.value)">
-                                        <option value="active" ${initiative.status === 'active' ? 'selected' : ''}>Active</option>
-                                        <option value="paused" ${initiative.status === 'paused' ? 'selected' : ''}>En pause</option>
-                                        <option value="completed" ${initiative.status === 'completed' ? 'selected' : ''}>Terminée</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    <button class="btn btn-danger" onclick="deleteRecord('initiatives', ${initiative.id})">🗑️</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Onglet Scans -->
-        <div id="scans" class="tab-content">
-            <div class="actions-bar">
-                <input type="text" class="search-box" placeholder="Rechercher un scan..." onkeyup="filterTable('scans-table', this.value)">
-                <button class="btn btn-primary" onclick="showAddModal('scan')">➕ Nouveau Scan</button>
-                <button class="btn btn-success" onclick="exportTable('scans')">📊 Exporter CSV</button>
-            </div>
-            
-            <div class="table-container">
-                <table id="scans-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Collecteur</th>
-                            <th>Initiative</th>
-                            <th>Signatures</th>
-                            <th>Qualité</th>
-                            <th>Confiance</th>
-                            <th>Notes</th>
-                            <th>Date</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${scans.map(scan => `
-                            <tr>
-                                <td><strong>${scan.id}</strong></td>
-                                <td>${scan.first_name} ${scan.last_name}</td>
-                                <td><strong>${scan.initiative_name}</strong></td>
-                                <td><input class="editable" type="number" value="${scan.signatures || 0}" onchange="updateField('scans', ${scan.id}, 'signatures', this.value)"></td>
-                                <td><input class="editable" type="number" min="0" max="100" value="${scan.quality || 85}" onchange="updateField('scans', ${scan.id}, 'quality', this.value)">%</td>
-                                <td><input class="editable" type="number" min="0" max="100" value="${scan.confidence || 85}" onchange="updateField('scans', ${scan.id}, 'confidence', this.value)">%</td>
-                                <td><input class="editable" value="${scan.notes || ''}" onchange="updateField('scans', ${scan.id}, 'notes', this.value)"></td>
-                                <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
-                                <td>
-                                    <button class="btn btn-danger" onclick="deleteRecord('scans', ${scan.id})">🗑️</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Onglet Actions -->
-        <div id="actions" class="tab-content">
-            <h2>⚡ Actions d'Administration</h2>
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
-                    <h3>🔧 Maintenance Base</h3>
-                    <p>Opérations de maintenance et nettoyage</p>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="performAction('cleanup')">🧹 Nettoyer Données</button>
-                        <button class="btn btn-primary" onclick="performAction('backup')">💾 Backup DB</button>
-                    </div>
-                </div>
-
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
-                    <h3>📊 Export Données</h3>
-                    <p>Exporter toutes les données en différents formats</p>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-success" onclick="exportAll('csv')">📄 Export CSV</button>
-                        <button class="btn btn-success" onclick="exportAll('json')">📋 Export JSON</button>
-                    </div>
-                </div>
-
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
-                    <h3>🔄 Reconfiguration</h3>
-                    <p>Réinitialiser ou reconfigurer la base</p>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="performAction('reset-setup')">🔄 Re-setup</button>
-                        <button class="btn btn-danger" onclick="performAction('reset-all')">⚠️ Reset Total</button>
-                    </div>
-                </div>
-
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
-                    <h3>📈 Statistiques</h3>
-                    <p>Générer des rapports et statistiques</p>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="generateReport('monthly')">📊 Rapport Mensuel</button>
-                        <button class="btn btn-primary" onclick="generateReport('performance')">⚡ Performance</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal d'ajout -->
-    <div id="addModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal()">&times;</span>
-            <h2>➕ Ajouter un nouvel élément</h2>
-            <form id="addForm">
-                <div id="formFields"></div>
-                <button type="submit" class="btn btn-primary">Ajouter</button>
-                <button type="button" class="btn" onclick="closeModal()">Annuler</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Notification -->
-    <div id="notification" class="notification"></div>
-
-    <!-- Actions flottantes -->
-    <div class="floating-actions">
-        <button class="fab" onclick="window.location.reload()" title="Actualiser">🔄</button>
-        <button class
+module.exports = router;
