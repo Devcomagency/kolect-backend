@@ -270,7 +270,8 @@ router.get('/force-setup', async (req, res) => {
   try {
     console.log('🔧 === CONFIGURATION BASE DE DONNÉES ===');
 
-    // 1. Créer table initiatives si elle n'existe pas
+    // 1. Créer table initiatives AVANT tout le reste
+    console.log('🔧 Étape 1: Création table initiatives...');
     const createInitiativesTable = `
       CREATE TABLE IF NOT EXISTS initiatives (
         id SERIAL PRIMARY KEY,
@@ -283,45 +284,11 @@ router.get('/force-setup', async (req, res) => {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `;
-
-    // 2. Créer table scans si elle n'existe pas
-    const createScansTable = `
-      CREATE TABLE IF NOT EXISTS scans (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES collaborators(id),
-        initiative_id INTEGER REFERENCES initiatives(id),
-        signatures INTEGER NOT NULL DEFAULT 0,
-        quality INTEGER DEFAULT 85,
-        confidence INTEGER DEFAULT 85,
-        notes TEXT,
-        file_path VARCHAR(255),
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
-
-    // Exécuter la création des tables
-    console.log('🔧 Création table initiatives...');
     await pool.query(createInitiativesTable);
-    
-    console.log('🔧 Création table scans...');
-    await pool.query(createScansTable);
+    console.log('✅ Table initiatives créée/vérifiée');
 
-    // 3. Créer des index pour optimiser les performances
-    console.log('🔧 Création des index...');
-    const indexes = [
-      'CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)',
-      'CREATE INDEX IF NOT EXISTS idx_scans_initiative_id ON scans(initiative_id)',
-      'CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans(created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_initiatives_status ON initiatives(status)'
-    ];
-
-    for (const indexQuery of indexes) {
-      await pool.query(indexQuery);
-    }
-
-    // 4. Vérifier et insérer les initiatives par défaut
-    console.log('🔧 Insertion des initiatives par défaut...');
+    // 2. Insérer les initiatives par défaut IMMÉDIATEMENT
+    console.log('🔧 Étape 2: Insertion initiatives par défaut...');
     const existingInitiatives = await pool.query('SELECT COUNT(*) FROM initiatives');
     
     if (parseInt(existingInitiatives.rows[0].count) === 0) {
@@ -344,16 +311,52 @@ router.get('/force-setup', async (req, res) => {
       console.log('✅ Initiatives déjà existantes');
     }
 
-    // 5. Ajouter des scans de test si la table est vide
-    console.log('🔧 Insertion des scans de test...');
+    // 3. Maintenant créer table scans (qui référence initiatives)
+    console.log('🔧 Étape 3: Création table scans...');
+    const createScansTable = `
+      CREATE TABLE IF NOT EXISTS scans (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES collaborators(id),
+        initiative_id INTEGER REFERENCES initiatives(id),
+        signatures INTEGER NOT NULL DEFAULT 0,
+        quality INTEGER DEFAULT 85,
+        confidence INTEGER DEFAULT 85,
+        notes TEXT,
+        file_path VARCHAR(255),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+    await pool.query(createScansTable);
+    console.log('✅ Table scans créée/vérifiée');
+
+    // 4. Créer des index pour optimiser les performances
+    console.log('🔧 Étape 4: Création des index...');
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_scans_initiative_id ON scans(initiative_id)',
+      'CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_initiatives_status ON initiatives(status)'
+    ];
+
+    for (const indexQuery of indexes) {
+      await pool.query(indexQuery);
+    }
+    console.log('✅ Index créés/vérifiés');
+
+    // 5. Maintenant on peut créer les scans de test en toute sécurité
+    console.log('🔧 Étape 5: Insertion scans de test...');
     const existingScans = await pool.query('SELECT COUNT(*) FROM scans');
     
     if (parseInt(existingScans.rows[0].count) === 0) {
-      // Récupérer les IDs des initiatives et utilisateurs
+      // Récupérer les IDs des initiatives et utilisateurs APRÈS les avoir créées
       const initiativesIds = await pool.query('SELECT id FROM initiatives ORDER BY id ASC');
       const userIds = await pool.query('SELECT id FROM collaborators ORDER BY id DESC LIMIT 5');
       
+      console.log(`🔍 Trouvé ${initiativesIds.rows.length} initiatives et ${userIds.rows.length} utilisateurs`);
+      
       if (initiativesIds.rows.length > 0 && userIds.rows.length > 0) {
+        console.log('🔧 Création de 30 scans de test...');
         // Créer 30 scans de test répartis sur 30 jours
         for (let i = 0; i < 30; i++) {
           const randomInitiative = initiativesIds.rows[Math.floor(Math.random() * initiativesIds.rows.length)];
@@ -376,6 +379,7 @@ router.get('/force-setup', async (req, res) => {
     }
 
     // 6. Statistiques finales
+    console.log('🔧 Étape 6: Calcul des statistiques finales...');
     const stats = await Promise.all([
       pool.query('SELECT COUNT(*) FROM collaborators'),
       pool.query('SELECT COUNT(*) FROM initiatives'),
@@ -393,7 +397,8 @@ router.get('/force-setup', async (req, res) => {
       message: "🎉 Base de données KOLECT configurée avec succès!",
       tables: {
         created: ["initiatives", "scans"],
-        indexed: ["user_id", "initiative_id", "created_at"]
+        indexed: ["user_id", "initiative_id", "created_at"],
+        order: "1. initiatives → 2. données → 3. scans → 4. index"
       },
       data: {
         collaborators: collaboratorsCount,
