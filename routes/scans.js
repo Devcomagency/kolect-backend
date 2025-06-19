@@ -26,6 +26,25 @@ const tableExists = async (tableName) => {
   }
 };
 
+// Fonction utilitaire pour vérifier si une colonne existe dans une table
+const columnExists = async (tableName, columnName) => {
+  try {
+    const result = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = $1 
+        AND column_name = $2
+      )`,
+      [tableName, columnName]
+    );
+    return result.rows[0].exists;
+  } catch (error) {
+    console.error(`❌ Erreur vérification colonne ${tableName}.${columnName}:`, error);
+    return false;
+  }
+};
+
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -80,6 +99,7 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
     // Vérifier si les tables existent
     const initiativesTableExists = await tableExists('initiatives');
     const scansTableExists = await tableExists('scans');
+    const initiativeIdColumnExists = scansTableExists ? await columnExists('scans', 'initiative_id') : false;
     
     if (!initiativesTableExists) {
       return res.status(404).json({
@@ -90,7 +110,7 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
     }
     
     let query;
-    if (scansTableExists) {
+    if (scansTableExists && initiativeIdColumnExists) {
       // Requête complète avec les stats de scans
       query = `
         SELECT 
@@ -145,11 +165,12 @@ router.get('/history', authenticateToken, async (req, res) => {
     
     // Vérifier si la table scans existe
     const scansTableExists = await tableExists('scans');
+    const userIdColumnExists = scansTableExists ? await columnExists('scans', 'user_id') : false;
     
-    if (!scansTableExists) {
+    if (!scansTableExists || !userIdColumnExists) {
       return res.status(404).json({
         success: false,
-        error: 'Table scans non trouvée',
+        error: 'Table scans ou colonne user_id non trouvée',
         hint: 'Exécutez /api/scans/force-setup pour créer les tables'
       });
     }
@@ -199,14 +220,16 @@ router.post('/submit', authenticateToken, async (req, res) => {
       });
     }
 
-    // Vérifier si les tables existent
+    // Vérifier si les tables et colonnes existent
     const initiativesTableExists = await tableExists('initiatives');
     const scansTableExists = await tableExists('scans');
+    const initiativeIdColumnExists = scansTableExists ? await columnExists('scans', 'initiative_id') : false;
+    const userIdColumnExists = scansTableExists ? await columnExists('scans', 'user_id') : false;
     
-    if (!initiativesTableExists || !scansTableExists) {
+    if (!initiativesTableExists || !scansTableExists || !initiativeIdColumnExists || !userIdColumnExists) {
       return res.status(404).json({
         success: false,
-        error: 'Tables manquantes',
+        error: 'Tables ou colonnes manquantes',
         hint: 'Exécutez /api/scans/force-setup pour créer les tables'
       });
     }
@@ -330,8 +353,24 @@ router.get('/force-setup', async (req, res) => {
     await pool.query(createScansTable);
     console.log('✅ Table scans créée/vérifiée');
 
-    // 4. Créer des index pour optimiser les performances
-    console.log('🔧 Étape 4: Création des index...');
+    // 4. Attendre un peu pour que PostgreSQL reconnaisse la nouvelle structure
+    console.log('🔧 Étape 4: Attente propagation schéma...');
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Attendre 2 secondes
+    
+    // 5. Vérifier que les colonnes existent vraiment
+    console.log('🔧 Étape 5: Vérification des colonnes...');
+    const initiativeIdExists = await columnExists('scans', 'initiative_id');
+    const userIdExists = await columnExists('scans', 'user_id');
+    
+    console.log(`🔍 Colonne initiative_id existe: ${initiativeIdExists}`);
+    console.log(`🔍 Colonne user_id existe: ${userIdExists}`);
+    
+    if (!initiativeIdExists || !userIdExists) {
+      throw new Error('Les colonnes de la table scans n\'ont pas été créées correctement');
+    }
+
+    // 6. Créer des index pour optimiser les performances
+    console.log('🔧 Étape 6: Création des index...');
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)',
       'CREATE INDEX IF NOT EXISTS idx_scans_initiative_id ON scans(initiative_id)',
@@ -344,8 +383,8 @@ router.get('/force-setup', async (req, res) => {
     }
     console.log('✅ Index créés/vérifiés');
 
-    // 5. Maintenant on peut créer les scans de test en toute sécurité
-    console.log('🔧 Étape 5: Insertion scans de test...');
+    // 7. Maintenant on peut créer les scans de test en toute sécurité
+    console.log('🔧 Étape 7: Insertion scans de test...');
     const existingScans = await pool.query('SELECT COUNT(*) FROM scans');
     
     if (parseInt(existingScans.rows[0].count) === 0) {
@@ -357,7 +396,8 @@ router.get('/force-setup', async (req, res) => {
       
       if (initiativesIds.rows.length > 0 && userIds.rows.length > 0) {
         console.log('🔧 Création de 30 scans de test...');
-        // Créer 30 scans de test répartis sur 30 jours
+        
+        // Créer les scans un par un pour éviter les problèmes de concurrence
         for (let i = 0; i < 30; i++) {
           const randomInitiative = initiativesIds.rows[Math.floor(Math.random() * initiativesIds.rows.length)];
           const randomUser = userIds.rows[Math.floor(Math.random() * userIds.rows.length)];
@@ -365,10 +405,18 @@ router.get('/force-setup', async (req, res) => {
           const randomQuality = Math.floor(Math.random() * 20) + 80; // Entre 80 et 100
           const daysAgo = Math.floor(Math.random() * 30); // Sur les 30 derniers jours
           
-          await pool.query(`
-            INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, created_at)
-            VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days')
-          `, [randomUser.id, randomInitiative.id, randomSignatures, randomQuality, randomQuality - 5]);
+          try {
+            await pool.query(`
+              INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, created_at)
+              VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days')
+            `, [randomUser.id, randomInitiative.id, randomSignatures, randomQuality, randomQuality - 5]);
+            
+            if ((i + 1) % 10 === 0) {
+              console.log(`🔧 ${i + 1}/30 scans créés...`);
+            }
+          } catch (error) {
+            console.error(`❌ Erreur création scan ${i + 1}:`, error.message);
+          }
         }
         console.log('✅ 30 scans de test créés');
       } else {
@@ -378,8 +426,8 @@ router.get('/force-setup', async (req, res) => {
       console.log('✅ Scans déjà existants');
     }
 
-    // 6. Statistiques finales
-    console.log('🔧 Étape 6: Calcul des statistiques finales...');
+    // 8. Statistiques finales
+    console.log('🔧 Étape 8: Calcul des statistiques finales...');
     const stats = await Promise.all([
       pool.query('SELECT COUNT(*) FROM collaborators'),
       pool.query('SELECT COUNT(*) FROM initiatives'),
@@ -398,12 +446,18 @@ router.get('/force-setup', async (req, res) => {
       tables: {
         created: ["initiatives", "scans"],
         indexed: ["user_id", "initiative_id", "created_at"],
-        order: "1. initiatives → 2. données → 3. scans → 4. index"
+        order: "1. initiatives → 2. données → 3. scans → 4. vérification → 5. index → 6. test data"
       },
       data: {
         collaborators: collaboratorsCount,
         initiatives: initiativesCount,
         scans: scansCount
+      },
+      verification: {
+        initiative_id_column: await columnExists('scans', 'initiative_id'),
+        user_id_column: await columnExists('scans', 'user_id'),
+        initiatives_table: await tableExists('initiatives'),
+        scans_table: await tableExists('scans')
       },
       initiatives: [
         "🌲 Forêt - Protection des forêts (10,000 signatures)",
@@ -498,6 +552,7 @@ router.get('/debug/tables', async (req, res) => {
     // Vérifier si les tables existent avant les requêtes
     const initiativesExists = await tableExists('initiatives');
     const scansExists = await tableExists('scans');
+    const initiativeIdExists = scansExists ? await columnExists('scans', 'initiative_id') : false;
 
     if (initiativesExists) {
       try {
@@ -508,7 +563,7 @@ router.get('/debug/tables', async (req, res) => {
       }
     }
 
-    if (scansExists && initiativesExists) {
+    if (scansExists && initiativesExists && initiativeIdExists) {
       try {
         const scansResult = await pool.query(`
           SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
@@ -555,16 +610,18 @@ router.get('/debug/tables', async (req, res) => {
             <p>Base de données - ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
-        ${!initiativesExists || !scansExists ? `
+        ${!initiativesExists || !scansExists || !initiativeIdExists ? `
         <div class="alert alert-warning">
-            <strong>⚠️ Tables manquantes détectées !</strong><br>
+            <strong>⚠️ Problèmes détectés !</strong><br>
             ${!initiativesExists ? '❌ Table "initiatives" manquante<br>' : ''}
             ${!scansExists ? '❌ Table "scans" manquante<br>' : ''}
-            <a href="/api/scans/force-setup" class="btn">🔧 Créer les tables manquantes</a>
+            ${scansExists && !initiativeIdExists ? '❌ Colonne "initiative_id" manquante dans table scans<br>' : ''}
+            <a href="/api/scans/force-setup" class="btn">🔧 Corriger les problèmes</a>
         </div>
         ` : `
         <div class="alert alert-success">
-            <strong>✅ Toutes les tables principales sont présentes !</strong>
+            <strong>✅ Configuration parfaite !</strong><br>
+            Toutes les tables et colonnes sont présentes.
         </div>
         `}
 
@@ -673,6 +730,7 @@ router.get('/admin', async (req, res) => {
     // Vérifier les tables avant de faire les requêtes
     const initiativesExists = await tableExists('initiatives');
     const scansExists = await tableExists('scans');
+    const initiativeIdExists = scansExists ? await columnExists('scans', 'initiative_id') : false;
 
     const adminHTML = `
 <!DOCTYPE html>
@@ -705,20 +763,21 @@ router.get('/admin', async (req, res) => {
             <p style="font-size: 0.9rem;">Dernière mise à jour: ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
-        ${!initiativesExists || !scansExists ? `
+        ${!initiativesExists || !scansExists || !initiativeIdExists ? `
         <div class="alert alert-warning">
             <h3>⚠️ Configuration Requise</h3>
-            <p>Certaines tables sont manquantes :</p>
+            <p>Problèmes détectés :</p>
             <ul>
                 ${!initiativesExists ? '<li>❌ Table "initiatives" non trouvée</li>' : ''}
                 ${!scansExists ? '<li>❌ Table "scans" non trouvée</li>' : ''}
+                ${scansExists && !initiativeIdExists ? '<li>❌ Colonne "initiative_id" manquante</li>' : ''}
             </ul>
-            <p><strong>Action requise :</strong> Cliquez sur "Setup Database" pour créer les tables manquantes.</p>
+            <p><strong>Action requise :</strong> Cliquez sur "Setup Database" pour corriger ces problèmes.</p>
         </div>
         ` : `
         <div class="alert alert-success">
-            <h3>✅ Configuration OK</h3>
-            <p>Toutes les tables sont présentes et fonctionnelles !</p>
+            <h3>✅ Configuration Parfaite</h3>
+            <p>Toutes les tables et colonnes sont présentes et fonctionnelles !</p>
         </div>
         `}
 
@@ -727,20 +786,20 @@ router.get('/admin', async (req, res) => {
             <div class="actions">
                 <div class="action-card">
                     <h3>🔍 Debug Interface</h3>
-                    <p>Voir toutes les données en lecture seule</p>
-                    <a href="/api/scans/debug/tables" class="btn btn-primary">📊 Voir Données</a>
+                    <p>Voir toutes les données + diagnostic</p>
+                    <a href="/api/scans/debug/tables" class="btn btn-primary">📊 Diagnostiquer</a>
                 </div>
                 
                 <div class="action-card">
                     <h3>🔧 Setup Database</h3>
-                    <p>Créer/reconfigurer les tables</p>
-                    <a href="/api/scans/force-setup" class="btn btn-success">⚙️ Configurer</a>
+                    <p>Créer/corriger les tables et colonnes</p>
+                    <a href="/api/scans/force-setup" class="btn btn-success">⚙️ Réparer</a>
                 </div>
                 
                 <div class="action-card">
                     <h3>💚 Health Check</h3>
                     <p>Vérifier le statut du serveur</p>
-                    <a href="/api/health" class="btn btn-primary">🩺 Diagnostiquer</a>
+                    <a href="/api/health" class="btn btn-primary">🩺 Status</a>
                 </div>
                 
                 <div class="action-card">
@@ -755,27 +814,20 @@ router.get('/admin', async (req, res) => {
         </div>
 
         <div class="section">
-            <h2>📚 Guide d'Utilisation</h2>
+            <h2>🔧 Diagnostic Technique</h2>
             <div style="text-align: left;">
-                <h4>🔧 Pour configurer la base de données :</h4>
+                <h4>🔍 État actuel détecté :</h4>
+                <ul>
+                    <li>Table initiatives : ${initiativesExists ? '✅ Présente' : '❌ Manquante'}</li>
+                    <li>Table scans : ${scansExists ? '✅ Présente' : '❌ Manquante'}</li>
+                    <li>Colonne initiative_id : ${initiativeIdExists ? '✅ Présente' : '❌ Manquante'}</li>
+                </ul>
+                
+                <h4>💡 Actions recommandées :</h4>
                 <ol>
-                    <li>Cliquez sur <strong>"Setup Database"</strong></li>
-                    <li>Attendez la confirmation de création des tables</li>
-                    <li>Vérifiez avec <strong>"Debug Interface"</strong></li>
-                </ol>
-
-                <h4>👀 Pour voir vos données :</h4>
-                <ol>
-                    <li>Utilisez <strong>"Debug Interface"</strong> pour voir toutes les données</li>
-                    <li>Vérifiez les statistiques et tables</li>
-                    <li>Consultez les initiatives et scans créés</li>
-                </ol>
-
-                <h4>📱 Pour tester l'app mobile :</h4>
-                <ol>
-                    <li>Vérifiez que les endpoints répondent avec <strong>"Test API"</strong></li>
-                    <li>Connectez-vous dans l'app mobile</li>
-                    <li>Le dashboard devrait afficher les vraies données</li>
+                    <li><strong>Setup Database</strong> → Corrige automatiquement tous les problèmes</li>
+                    <li><strong>Debug Interface</strong> → Vérifie que tout fonctionne</li>
+                    <li><strong>Test App Mobile</strong> → Confirme que les endpoints marchent</li>
                 </ol>
             </div>
         </div>
