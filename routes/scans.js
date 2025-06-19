@@ -8,6 +8,24 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Fonction utilitaire pour vérifier si une table existe
+const tableExists = async (tableName) => {
+  try {
+    const result = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename = $1
+      )`,
+      [tableName]
+    );
+    return result.rows[0].exists;
+  } catch (error) {
+    console.error(`❌ Erreur vérification table ${tableName}:`, error);
+    return false;
+  }
+};
+
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -59,17 +77,44 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
   try {
     console.log('📊 === RÉCUPÉRATION INITIATIVES ===');
     
-    const query = `
-      SELECT 
-        i.*,
-        COUNT(s.id) as total_scans,
-        COALESCE(SUM(s.signatures), 0) as total_signatures,
-        MAX(s.created_at) as last_scan_date
-      FROM initiatives i
-      LEFT JOIN scans s ON i.id = s.initiative_id
-      GROUP BY i.id
-      ORDER BY i.id ASC
-    `;
+    // Vérifier si les tables existent
+    const initiativesTableExists = await tableExists('initiatives');
+    const scansTableExists = await tableExists('scans');
+    
+    if (!initiativesTableExists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Table initiatives non trouvée',
+        hint: 'Exécutez /api/scans/force-setup pour créer les tables'
+      });
+    }
+    
+    let query;
+    if (scansTableExists) {
+      // Requête complète avec les stats de scans
+      query = `
+        SELECT 
+          i.*,
+          COUNT(s.id) as total_scans,
+          COALESCE(SUM(s.signatures), 0) as total_signatures,
+          MAX(s.created_at) as last_scan_date
+        FROM initiatives i
+        LEFT JOIN scans s ON i.id = s.initiative_id
+        GROUP BY i.id
+        ORDER BY i.id ASC
+      `;
+    } else {
+      // Requête simple sans les scans
+      query = `
+        SELECT 
+          *,
+          0 as total_scans,
+          0 as total_signatures,
+          NULL as last_scan_date
+        FROM initiatives
+        ORDER BY id ASC
+      `;
+    }
     
     const result = await pool.query(query);
     const initiatives = result.rows.map(row => ({
@@ -97,6 +142,17 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, async (req, res) => {
   try {
     console.log('📈 === RÉCUPÉRATION HISTORIQUE ===');
+    
+    // Vérifier si la table scans existe
+    const scansTableExists = await tableExists('scans');
+    
+    if (!scansTableExists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Table scans non trouvée',
+        hint: 'Exécutez /api/scans/force-setup pour créer les tables'
+      });
+    }
     
     const userId = req.user.userId;
     const days = parseInt(req.query.days) || 30;
@@ -140,6 +196,18 @@ router.post('/submit', authenticateToken, async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Initiative et signatures requis'
+      });
+    }
+
+    // Vérifier si les tables existent
+    const initiativesTableExists = await tableExists('initiatives');
+    const scansTableExists = await tableExists('scans');
+    
+    if (!initiativesTableExists || !scansTableExists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tables manquantes',
+        hint: 'Exécutez /api/scans/force-setup pour créer les tables'
       });
     }
 
@@ -233,10 +301,14 @@ router.get('/force-setup', async (req, res) => {
     `;
 
     // Exécuter la création des tables
+    console.log('🔧 Création table initiatives...');
     await pool.query(createInitiativesTable);
+    
+    console.log('🔧 Création table scans...');
     await pool.query(createScansTable);
 
     // 3. Créer des index pour optimiser les performances
+    console.log('🔧 Création des index...');
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)',
       'CREATE INDEX IF NOT EXISTS idx_scans_initiative_id ON scans(initiative_id)',
@@ -249,6 +321,7 @@ router.get('/force-setup', async (req, res) => {
     }
 
     // 4. Vérifier et insérer les initiatives par défaut
+    console.log('🔧 Insertion des initiatives par défaut...');
     const existingInitiatives = await pool.query('SELECT COUNT(*) FROM initiatives');
     
     if (parseInt(existingInitiatives.rows[0].count) === 0) {
@@ -266,9 +339,13 @@ router.get('/force-setup', async (req, res) => {
           [initiative.name, initiative.description, initiative.objective, initiative.color]
         );
       }
+      console.log(`✅ ${initiatives.length} initiatives créées`);
+    } else {
+      console.log('✅ Initiatives déjà existantes');
     }
 
     // 5. Ajouter des scans de test si la table est vide
+    console.log('🔧 Insertion des scans de test...');
     const existingScans = await pool.query('SELECT COUNT(*) FROM scans');
     
     if (parseInt(existingScans.rows[0].count) === 0) {
@@ -276,19 +353,26 @@ router.get('/force-setup', async (req, res) => {
       const initiativesIds = await pool.query('SELECT id FROM initiatives ORDER BY id ASC');
       const userIds = await pool.query('SELECT id FROM collaborators ORDER BY id DESC LIMIT 5');
       
-      // Créer 30 scans de test répartis sur 30 jours
-      for (let i = 0; i < 30; i++) {
-        const randomInitiative = initiativesIds.rows[Math.floor(Math.random() * initiativesIds.rows.length)];
-        const randomUser = userIds.rows[Math.floor(Math.random() * userIds.rows.length)];
-        const randomSignatures = Math.floor(Math.random() * 25) + 5; // Entre 5 et 30 signatures
-        const randomQuality = Math.floor(Math.random() * 20) + 80; // Entre 80 et 100
-        const daysAgo = Math.floor(Math.random() * 30); // Sur les 30 derniers jours
-        
-        await pool.query(`
-          INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, created_at)
-          VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days')
-        `, [randomUser.id, randomInitiative.id, randomSignatures, randomQuality, randomQuality - 5]);
+      if (initiativesIds.rows.length > 0 && userIds.rows.length > 0) {
+        // Créer 30 scans de test répartis sur 30 jours
+        for (let i = 0; i < 30; i++) {
+          const randomInitiative = initiativesIds.rows[Math.floor(Math.random() * initiativesIds.rows.length)];
+          const randomUser = userIds.rows[Math.floor(Math.random() * userIds.rows.length)];
+          const randomSignatures = Math.floor(Math.random() * 25) + 5; // Entre 5 et 30 signatures
+          const randomQuality = Math.floor(Math.random() * 20) + 80; // Entre 80 et 100
+          const daysAgo = Math.floor(Math.random() * 30); // Sur les 30 derniers jours
+          
+          await pool.query(`
+            INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days')
+          `, [randomUser.id, randomInitiative.id, randomSignatures, randomQuality, randomQuality - 5]);
+        }
+        console.log('✅ 30 scans de test créés');
+      } else {
+        console.log('⚠️ Pas d\'utilisateurs ou d\'initiatives pour créer des scans de test');
       }
+    } else {
+      console.log('✅ Scans déjà existants');
     }
 
     // 6. Statistiques finales
@@ -357,7 +441,7 @@ router.get('/force-setup', async (req, res) => {
   }
 });
 
-// GET /api/scans/debug/tables - Interface de debug simplifiée
+// GET /api/scans/debug/tables - Interface de debug sécurisée
 router.get('/debug/tables', async (req, res) => {
   try {
     console.log('🔍 === DEBUG TABLES ===');
@@ -394,23 +478,46 @@ router.get('/debug/tables', async (req, res) => {
       }
     }
 
-    // Récupérer des données spécifiques
-    const queries = await Promise.allSettled([
-      pool.query('SELECT id, first_name, last_name, email, status, created_at FROM collaborators ORDER BY id DESC LIMIT 10'),
-      pool.query('SELECT * FROM initiatives ORDER BY id ASC'),
-      pool.query(`
-        SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
-        FROM scans s 
-        LEFT JOIN initiatives i ON s.initiative_id = i.id 
-        LEFT JOIN collaborators c ON s.user_id = c.id 
-        ORDER BY s.created_at DESC 
-        LIMIT 20
-      `)
-    ]);
+    // Récupérer des données spécifiques en vérifiant l'existence des tables
+    const collaborators = [];
+    const initiatives = [];
+    const scans = [];
 
-    const collaborators = queries[0].status === 'fulfilled' ? queries[0].value.rows : [];
-    const initiatives = queries[1].status === 'fulfilled' ? queries[1].value.rows : [];
-    const scans = queries[2].status === 'fulfilled' ? queries[2].value.rows : [];
+    try {
+      const collabResult = await pool.query('SELECT id, first_name, last_name, email, status, created_at FROM collaborators ORDER BY id DESC LIMIT 10');
+      collaborators.push(...collabResult.rows);
+    } catch (err) {
+      console.log('⚠️ Table collaborators non accessible');
+    }
+
+    // Vérifier si les tables existent avant les requêtes
+    const initiativesExists = await tableExists('initiatives');
+    const scansExists = await tableExists('scans');
+
+    if (initiativesExists) {
+      try {
+        const initResult = await pool.query('SELECT * FROM initiatives ORDER BY id ASC');
+        initiatives.push(...initResult.rows);
+      } catch (err) {
+        console.log('⚠️ Erreur lecture table initiatives:', err.message);
+      }
+    }
+
+    if (scansExists && initiativesExists) {
+      try {
+        const scansResult = await pool.query(`
+          SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
+          FROM scans s 
+          LEFT JOIN initiatives i ON s.initiative_id = i.id 
+          LEFT JOIN collaborators c ON s.user_id = c.id 
+          ORDER BY s.created_at DESC 
+          LIMIT 20
+        `);
+        scans.push(...scansResult.rows);
+      } catch (err) {
+        console.log('⚠️ Erreur lecture table scans:', err.message);
+      }
+    }
 
     // Créer une page HTML simple
     const debugHTML = `
@@ -430,6 +537,10 @@ router.get('/debug/tables', async (req, res) => {
         th { background: #35A085; color: white; }
         tr:nth-child(even) { background: #f9f9f9; }
         .stat { display: inline-block; background: #4ECDC4; color: white; padding: 10px 20px; margin: 5px; border-radius: 5px; font-weight: bold; }
+        .alert { padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .alert-warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; }
+        .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .btn { padding: 10px 20px; margin: 5px; background: #4ECDC4; color: white; text-decoration: none; border-radius: 5px; display: inline-block; }
     </style>
 </head>
 <body>
@@ -438,6 +549,19 @@ router.get('/debug/tables', async (req, res) => {
             <h1>🔍 KOLECT Debug Interface</h1>
             <p>Base de données - ${new Date().toLocaleString('fr-FR')}</p>
         </div>
+
+        ${!initiativesExists || !scansExists ? `
+        <div class="alert alert-warning">
+            <strong>⚠️ Tables manquantes détectées !</strong><br>
+            ${!initiativesExists ? '❌ Table "initiatives" manquante<br>' : ''}
+            ${!scansExists ? '❌ Table "scans" manquante<br>' : ''}
+            <a href="/api/scans/force-setup" class="btn">🔧 Créer les tables manquantes</a>
+        </div>
+        ` : `
+        <div class="alert alert-success">
+            <strong>✅ Toutes les tables principales sont présentes !</strong>
+        </div>
+        `}
 
         <div class="section">
             <h2>📊 Statistiques</h2>
@@ -451,7 +575,7 @@ router.get('/debug/tables', async (req, res) => {
             <h2>📋 Tables de la Base</h2>
             <table>
                 <thead>
-                    <tr><th>Table</th><th>Entrées</th><th>Propriétaire</th></tr>
+                    <tr><th>Table</th><th>Entrées</th><th>Propriétaire</th><th>Status</th></tr>
                 </thead>
                 <tbody>
                     ${tablesList.map(table => `
@@ -459,6 +583,7 @@ router.get('/debug/tables', async (req, res) => {
                             <td><strong>${table.name}</strong></td>
                             <td>${table.count}</td>
                             <td>${table.owner}</td>
+                            <td>${['initiatives', 'scans'].includes(table.name) && table.count > 0 ? '✅ OK' : table.count === 0 ? '⚠️ Vide' : '📊 Données'}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -467,7 +592,7 @@ router.get('/debug/tables', async (req, res) => {
 
         ${initiatives.length > 0 ? `
         <div class="section">
-            <h2>🎯 Initiatives</h2>
+            <h2>🎯 Initiatives Configurées</h2>
             <table>
                 <thead>
                     <tr><th>ID</th><th>Nom</th><th>Description</th><th>Objectif</th><th>Couleur</th></tr>
@@ -479,7 +604,7 @@ router.get('/debug/tables', async (req, res) => {
                             <td><strong>${init.name}</strong></td>
                             <td>${init.description || 'N/A'}</td>
                             <td>${init.objective || 0}</td>
-                            <td style="background: ${init.color}; color: white;">${init.color}</td>
+                            <td style="background: ${init.color}; color: white; text-align: center;">${init.color}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -511,10 +636,12 @@ router.get('/debug/tables', async (req, res) => {
         ` : ''}
 
         <div class="section">
-            <h2>🔗 Liens Utiles</h2>
-            <p><a href="/api/scans/admin">🎯 Interface Admin</a></p>
-            <p><a href="/api/scans/force-setup">🔧 Reconfigurer</a></p>
-            <p><a href="/api/health">💚 Health Check</a></p>
+            <h2>🔗 Actions Disponibles</h2>
+            <div>
+                <a href="/api/scans/force-setup" class="btn">🔧 Setup/Reconfigurer</a>
+                <a href="/api/scans/admin" class="btn">🎯 Interface Admin</a>
+                <a href="/api/health" class="btn">💚 Health Check</a>
+            </div>
         </div>
     </div>
 </body>
@@ -533,30 +660,15 @@ router.get('/debug/tables', async (req, res) => {
   }
 });
 
-// GET /api/scans/admin - Interface d'administration simplifiée
+// GET /api/scans/admin - Interface d'administration sécurisée
 router.get('/admin', async (req, res) => {
   try {
     console.log('🎨 === INTERFACE ADMIN ===');
 
-    // Récupérer toutes les données
-    const [collaboratorsResult, initiativesResult, scansResult] = await Promise.all([
-      pool.query('SELECT * FROM collaborators ORDER BY id DESC LIMIT 20'),
-      pool.query('SELECT * FROM initiatives ORDER BY id ASC'),
-      pool.query(`
-        SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
-        FROM scans s 
-        LEFT JOIN initiatives i ON s.initiative_id = i.id 
-        LEFT JOIN collaborators c ON s.user_id = c.id 
-        ORDER BY s.created_at DESC 
-        LIMIT 30
-      `)
-    ]);
+    // Vérifier les tables avant de faire les requêtes
+    const initiativesExists = await tableExists('initiatives');
+    const scansExists = await tableExists('scans');
 
-    const collaborators = collaboratorsResult.rows;
-    const initiatives = initiativesResult.rows;
-    const scans = scansResult.rows;
-
-    // Interface HTML simplifiée
     const adminHTML = `
 <!DOCTYPE html>
 <html lang="fr">
@@ -566,172 +678,103 @@ router.get('/admin', async (req, res) => {
     <title>🎯 KOLECT Admin</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1400px; margin: 0 auto; }
+        .container { max-width: 1000px; margin: 0 auto; }
         .header { background: linear-gradient(135deg, #4ECDC4, #35A085); color: white; padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 30px; }
-        .tabs { display: flex; background: white; border-radius: 10px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .tab { flex: 1; padding: 15px; background: #f8f9fa; cursor: pointer; text-align: center; border: none; font-weight: bold; }
-        .tab.active { background: #4ECDC4; color: white; }
-        .tab-content { display: none; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .tab-content.active { display: block; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-        th { background: #35A085; color: white; }
-        tr:nth-child(even) { background: #f9f9f9; }
-        .editable { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; }
-        .btn { padding: 8px 15px; margin: 2px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .btn-danger { background: #e74c3c; color: white; }
+        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .btn { padding: 10px 20px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; text-decoration: none; display: inline-block; }
         .btn-primary { background: #4ECDC4; color: white; }
-        .stats { display: flex; gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .stat-number { font-size: 2rem; font-weight: bold; color: #4ECDC4; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .action-card { background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center; }
+        .alert { padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .alert-warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; }
+        .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎯 KOLECT Admin Pro</h1>
-            <p>Interface de gestion - ${new Date().toLocaleString('fr-FR')}</p>
+            <h1>🎯 KOLECT Admin</h1>
+            <p>Interface d'administration</p>
+            <p style="font-size: 0.9rem;">Dernière mise à jour: ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-number">${collaborators.length}</div>
-                <div>Collaborateurs</div>
+        ${!initiativesExists || !scansExists ? `
+        <div class="alert alert-warning">
+            <h3>⚠️ Configuration Requise</h3>
+            <p>Certaines tables sont manquantes :</p>
+            <ul>
+                ${!initiativesExists ? '<li>❌ Table "initiatives" non trouvée</li>' : ''}
+                ${!scansExists ? '<li>❌ Table "scans" non trouvée</li>' : ''}
+            </ul>
+            <p><strong>Action requise :</strong> Cliquez sur "Setup Database" pour créer les tables manquantes.</p>
+        </div>
+        ` : `
+        <div class="alert alert-success">
+            <h3>✅ Configuration OK</h3>
+            <p>Toutes les tables sont présentes et fonctionnelles !</p>
+        </div>
+        `}
+
+        <div class="section">
+            <h2>🔗 Interface de Gestion</h2>
+            <div class="actions">
+                <div class="action-card">
+                    <h3>🔍 Debug Interface</h3>
+                    <p>Voir toutes les données en lecture seule</p>
+                    <a href="/api/scans/debug/tables" class="btn btn-primary">📊 Voir Données</a>
+                </div>
+                
+                <div class="action-card">
+                    <h3>🔧 Setup Database</h3>
+                    <p>Créer/reconfigurer les tables</p>
+                    <a href="/api/scans/force-setup" class="btn btn-success">⚙️ Configurer</a>
+                </div>
+                
+                <div class="action-card">
+                    <h3>💚 Health Check</h3>
+                    <p>Vérifier le statut du serveur</p>
+                    <a href="/api/health" class="btn btn-primary">🩺 Diagnostiquer</a>
+                </div>
+                
+                <div class="action-card">
+                    <h3>📱 App Mobile</h3>
+                    <p>Tester les endpoints API</p>
+                    <a href="/api/scans/initiatives" class="btn btn-primary">🔗 Test API</a>
+                    <small style="display: block; margin-top: 5px; color: #666;">
+                        (Nécessite un token d'authentification)
+                    </small>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number">${initiatives.length}</div>
-                <div>Initiatives</div>
+        </div>
+
+        <div class="section">
+            <h2>📚 Guide d'Utilisation</h2>
+            <div style="text-align: left;">
+                <h4>🔧 Pour configurer la base de données :</h4>
+                <ol>
+                    <li>Cliquez sur <strong>"Setup Database"</strong></li>
+                    <li>Attendez la confirmation de création des tables</li>
+                    <li>Vérifiez avec <strong>"Debug Interface"</strong></li>
+                </ol>
+
+                <h4>👀 Pour voir vos données :</h4>
+                <ol>
+                    <li>Utilisez <strong>"Debug Interface"</strong> pour voir toutes les données</li>
+                    <li>Vérifiez les statistiques et tables</li>
+                    <li>Consultez les initiatives et scans créés</li>
+                </ol>
+
+                <h4>📱 Pour tester l'app mobile :</h4>
+                <ol>
+                    <li>Vérifiez que les endpoints répondent avec <strong>"Test API"</strong></li>
+                    <li>Connectez-vous dans l'app mobile</li>
+                    <li>Le dashboard devrait afficher les vraies données</li>
+                </ol>
             </div>
-            <div class="stat-card">
-                <div class="stat-number">${scans.length}</div>
-                <div>Scans</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${scans.reduce((sum, scan) => sum + (scan.signatures || 0), 0)}</div>
-                <div>Signatures</div>
-            </div>
-        </div>
-
-        <div class="tabs">
-            <button class="tab active" onclick="showTab('collaborators')">👥 Collaborateurs</button>
-            <button class="tab" onclick="showTab('initiatives')">🎯 Initiatives</button>
-            <button class="tab" onclick="showTab('scans')">📸 Scans</button>
-        </div>
-
-        <div id="collaborators" class="tab-content active">
-            <h2>👥 Collaborateurs</h2>
-            <table>
-                <thead>
-                    <tr><th>ID</th><th>Prénom</th><th>Nom</th><th>Email</th><th>Statut</th><th>Actions</th></tr>
-                </thead>
-                <tbody>
-                    ${collaborators.map(collab => `
-                        <tr>
-                            <td><strong>${collab.id}</strong></td>
-                            <td><input class="editable" value="${collab.first_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'first_name', this.value)"></td>
-                            <td><input class="editable" value="${collab.last_name || ''}" onchange="updateField('collaborators', ${collab.id}, 'last_name', this.value)"></td>
-                            <td><input class="editable" value="${collab.email || ''}" onchange="updateField('collaborators', ${collab.id}, 'email', this.value)"></td>
-                            <td>
-                                <select class="editable" onchange="updateField('collaborators', ${collab.id}, 'status', this.value)">
-                                    <option value="active" ${collab.status === 'active' ? 'selected' : ''}>Actif</option>
-                                    <option value="inactive" ${collab.status === 'inactive' ? 'selected' : ''}>Inactif</option>
-                                </select>
-                            </td>
-                            <td><button class="btn btn-danger" onclick="deleteRecord('collaborators', ${collab.id})">🗑️</button></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-
-        <div id="initiatives" class="tab-content">
-            <h2>🎯 Initiatives</h2>
-            <table>
-                <thead>
-                    <tr><th>ID</th><th>Nom</th><th>Description</th><th>Objectif</th><th>Couleur</th><th>Actions</th></tr>
-                </thead>
-                <tbody>
-                    ${initiatives.map(init => `
-                        <tr>
-                            <td><strong>${init.id}</strong></td>
-                            <td><input class="editable" value="${init.name || ''}" onchange="updateField('initiatives', ${init.id}, 'name', this.value)"></td>
-                            <td><input class="editable" value="${init.description || ''}" onchange="updateField('initiatives', ${init.id}, 'description', this.value)"></td>
-                            <td><input class="editable" type="number" value="${init.objective || 0}" onchange="updateField('initiatives', ${init.id}, 'objective', this.value)"></td>
-                            <td><input class="editable" type="color" value="${init.color || '#4ECDC4'}" onchange="updateField('initiatives', ${init.id}, 'color', this.value)"></td>
-                            <td><button class="btn btn-danger" onclick="deleteRecord('initiatives', ${init.id})">🗑️</button></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-
-        <div id="scans" class="tab-content">
-            <h2>📸 Scans</h2>
-            <table>
-                <thead>
-                    <tr><th>ID</th><th>Collecteur</th><th>Initiative</th><th>Signatures</th><th>Qualité</th><th>Date</th><th>Actions</th></tr>
-                </thead>
-                <tbody>
-                    ${scans.map(scan => `
-                        <tr>
-                            <td><strong>${scan.id}</strong></td>
-                            <td>${scan.first_name} ${scan.last_name}</td>
-                            <td><strong>${scan.initiative_name}</strong></td>
-                            <td><input class="editable" type="number" value="${scan.signatures || 0}" onchange="updateField('scans', ${scan.id}, 'signatures', this.value)"></td>
-                            <td><input class="editable" type="number" value="${scan.quality || 85}" onchange="updateField('scans', ${scan.id}, 'quality', this.value)">%</td>
-                            <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td><button class="btn btn-danger" onclick="deleteRecord('scans', ${scan.id})">🗑️</button></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
         </div>
     </div>
-
-    <script>
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
-        }
-
-        async function updateField(table, id, field, value) {
-            try {
-                const response = await fetch(\`/api/scans/admin/update/\${table}/\${id}\`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ field, value })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    alert('✅ Modifié avec succès');
-                } else {
-                    alert('❌ Erreur: ' + result.error);
-                }
-            } catch (error) {
-                alert('❌ Erreur de connexion');
-            }
-        }
-
-        async function deleteRecord(table, id) {
-            if (!confirm('Supprimer cet élément ?')) return;
-            try {
-                const response = await fetch(\`/api/scans/admin/delete/\${table}/\${id}\`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
-                if (result.success) {
-                    alert('✅ Supprimé avec succès');
-                    event.target.closest('tr').remove();
-                } else {
-                    alert('❌ Erreur: ' + result.error);
-                }
-            } catch (error) {
-                alert('❌ Erreur de connexion');
-            }
-        }
-    </script>
 </body>
 </html>
     `;
@@ -745,46 +788,6 @@ router.get('/admin', async (req, res) => {
       error: "Erreur lors du chargement de l'interface admin",
       details: error.message
     });
-  }
-});
-
-// Endpoints pour les actions admin
-router.put('/admin/update/:table/:id', async (req, res) => {
-  try {
-    const { table, id } = req.params;
-    const { field, value } = req.body;
-
-    const allowedTables = ['collaborators', 'initiatives', 'scans'];
-    if (!allowedTables.includes(table)) {
-      return res.status(400).json({ success: false, error: 'Table non autorisée' });
-    }
-
-    const query = `UPDATE ${table} SET ${field} = $1, updated_at = NOW() WHERE id = $2`;
-    await pool.query(query, [value, id]);
-
-    res.json({ success: true, message: 'Champ mis à jour' });
-  } catch (error) {
-    console.error('❌ Erreur update:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.delete('/admin/delete/:table/:id', async (req, res) => {
-  try {
-    const { table, id } = req.params;
-
-    const allowedTables = ['collaborators', 'initiatives', 'scans'];
-    if (!allowedTables.includes(table)) {
-      return res.status(400).json({ success: false, error: 'Table non autorisée' });
-    }
-
-    const query = `DELETE FROM ${table} WHERE id = $1`;
-    await pool.query(query, [id]);
-
-    res.json({ success: true, message: 'Enregistrement supprimé' });
-  } catch (error) {
-    console.error('❌ Erreur suppression:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
