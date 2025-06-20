@@ -30,7 +30,395 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// === PROFIL COMPLET DU COLLABORATEUR ===
+// 🔐 NOUVEAU: Mes paramètres personnels
+router.get('/personal-settings', authenticateToken, async (req, res) => {
+  try {
+    console.log('⚙️ === PARAMÈTRES PERSONNELS ===');
+    console.log('User ID:', req.user.userId);
+
+    const settings = await pool.query(`
+      SELECT 
+        c.*,
+        COUNT(s.id) as total_scans,
+        SUM(s.signatures) as total_signatures,
+        MAX(s.scan_date) as last_scan_date,
+        AVG(s.quality) as avg_quality
+      FROM collaborators c
+      LEFT JOIN scans s ON c.id = s.collaborator_id
+      WHERE c.id = $1
+      GROUP BY c.id
+    `, [req.user.userId]);
+
+    if (settings.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const user = settings.rows[0];
+
+    res.json({
+      success: true,
+      message: 'Paramètres personnels récupérés',
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        phone: user.phone,
+        address: user.address,
+        city: user.city,
+        postalCode: user.postal_code,
+        age: user.age,
+        birthDate: user.birth_date,
+        hireDate: user.hire_date,
+        nationalId: user.national_id,
+        emergencyContactName: user.emergency_contact_name,
+        emergencyContactPhone: user.emergency_contact_phone,
+        status: user.status,
+        contractSigned: user.contract_signed,
+        contractSignedAt: user.contract_signed_at,
+        contractPdfUrl: user.contract_pdf_url,
+        createdAt: user.created_at,
+        stats: {
+          totalScans: parseInt(user.total_scans) || 0,
+          totalSignatures: parseInt(user.total_signatures) || 0,
+          lastScanDate: user.last_scan_date,
+          avgQuality: parseFloat(user.avg_quality) || 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur paramètres personnels:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des paramètres',
+      details: error.message
+    });
+  }
+});
+
+// 🔄 NOUVEAU: Mise à jour informations personnelles
+router.put('/update-personal', authenticateToken, async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      phone,
+      address,
+      city,
+      postalCode,
+      age,
+      birthDate,
+      emergencyContactName,
+      emergencyContactPhone
+    } = req.body;
+    
+    console.log('✏️ === MISE À JOUR INFOS PERSONNELLES ===');
+    console.log('User ID:', req.user.userId);
+    console.log('Nouvelles infos:', { firstName, lastName, phone, city });
+
+    // Validation basique
+    if (!firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Prénom et nom requis'
+      });
+    }
+
+    const updated = await pool.query(`
+      UPDATE collaborators 
+      SET 
+        first_name = $1,
+        last_name = $2,
+        phone = $3,
+        address = $4,
+        city = $5,
+        postal_code = $6,
+        age = $7,
+        birth_date = $8,
+        emergency_contact_name = $9,
+        emergency_contact_phone = $10
+      WHERE id = $11
+      RETURNING id, first_name, last_name, phone, email, address, city, postal_code, age, birth_date
+    `, [
+      firstName,
+      lastName,
+      phone,
+      address,
+      city,
+      postalCode,
+      age ? parseInt(age) : null,
+      birthDate,
+      emergencyContactName,
+      emergencyContactPhone,
+      req.user.userId
+    ]);
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    console.log('✅ Informations mises à jour');
+
+    res.json({
+      success: true,
+      message: 'Informations personnelles mises à jour',
+      user: {
+        id: updated.rows[0].id,
+        firstName: updated.rows[0].first_name,
+        lastName: updated.rows[0].last_name,
+        phone: updated.rows[0].phone,
+        email: updated.rows[0].email,
+        address: updated.rows[0].address,
+        city: updated.rows[0].city,
+        postalCode: updated.rows[0].postal_code,
+        age: updated.rows[0].age,
+        birthDate: updated.rows[0].birth_date
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur mise à jour:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la mise à jour',
+      details: error.message
+    });
+  }
+});
+
+// 📊 NOUVEAU: Mon résumé mensuel personnel
+router.get('/personal-monthly', authenticateToken, async (req, res) => {
+  try {
+    console.log('📈 === RÉSUMÉ MENSUEL PERSONNEL ===');
+    console.log('User ID:', req.user.userId);
+
+    const monthlyData = await pool.query(`
+      SELECT 
+        DATE_TRUNC('month', scan_date) as month,
+        COUNT(*) as scan_count,
+        SUM(signatures) as monthly_signatures,
+        AVG(quality) as avg_quality,
+        COUNT(DISTINCT initiative) as initiative_count,
+        STRING_AGG(DISTINCT initiative, ', ') as initiatives
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND scan_date >= CURRENT_DATE - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', scan_date)
+      ORDER BY month DESC
+    `, [req.user.userId]);
+
+    const monthly = monthlyData.rows.map(month => ({
+      month: month.month,
+      scanCount: parseInt(month.scan_count) || 0,
+      signatures: parseInt(month.monthly_signatures) || 0,
+      avgQuality: parseFloat(month.avg_quality) || 0,
+      initiativeCount: parseInt(month.initiative_count) || 0,
+      initiatives: month.initiatives || ''
+    }));
+
+    res.json({
+      success: true,
+      message: 'Résumé mensuel personnel récupéré',
+      userId: req.user.userId,
+      monthlyData: monthly
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur résumé mensuel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération du résumé mensuel',
+      details: error.message
+    });
+  }
+});
+
+// 🏆 NOUVEAU: Mon classement personnel (sans révéler les autres)
+router.get('/personal-ranking', authenticateToken, async (req, res) => {
+  try {
+    console.log('🏆 === CLASSEMENT PERSONNEL ===');
+    console.log('User ID:', req.user.userId);
+
+    // Calculer le rang de l'utilisateur sans révéler les autres utilisateurs
+    const userRank = await pool.query(`
+      WITH user_stats AS (
+        SELECT 
+          collaborator_id,
+          SUM(signatures) as total_signatures,
+          COUNT(*) as total_scans,
+          RANK() OVER (ORDER BY SUM(signatures) DESC) as rank
+        FROM scans 
+        WHERE signatures > 0
+        GROUP BY collaborator_id
+      )
+      SELECT 
+        rank,
+        total_signatures,
+        total_scans,
+        (SELECT COUNT(DISTINCT collaborator_id) FROM scans WHERE signatures > 0) as total_collaborators
+      FROM user_stats 
+      WHERE collaborator_id = $1
+    `, [req.user.userId]);
+
+    let ranking = null;
+    if (userRank.rows.length > 0) {
+      const rank = userRank.rows[0];
+      ranking = {
+        position: parseInt(rank.rank),
+        totalSignatures: parseInt(rank.total_signatures),
+        totalScans: parseInt(rank.total_scans),
+        totalCollaborators: parseInt(rank.total_collaborators),
+        percentile: Math.round(((parseInt(rank.total_collaborators) - parseInt(rank.rank) + 1) / parseInt(rank.total_collaborators)) * 100)
+      };
+    }
+
+    console.log('🏆 Classement calculé:', ranking);
+
+    res.json({
+      success: true,
+      message: 'Classement personnel calculé',
+      userId: req.user.userId,
+      ranking: ranking
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur classement:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors du calcul du classement',
+      details: error.message
+    });
+  }
+});
+
+// 🚨 NOUVEAU: Vérifier les permissions
+router.get('/check-permissions', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔐 === VÉRIFICATION PERMISSIONS ===');
+    console.log('User ID:', req.user.userId);
+
+    const user = await pool.query(
+      'SELECT id, email, first_name, last_name, status FROM collaborators WHERE id = $1',
+      [req.user.userId]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    const userData = user.rows[0];
+
+    res.json({
+      success: true,
+      message: 'Permissions vérifiées',
+      user: {
+        id: userData.id,
+        email: userData.email,
+        firstName: userData.first_name,
+        lastName: userData.last_name,
+        status: userData.status,
+        canViewOwnData: true,
+        canViewGlobalData: false, // Seules ses propres données
+        canEditOwnProfile: true,
+        canDeleteOwnScans: true
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur vérification permissions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la vérification des permissions',
+      details: error.message
+    });
+  }
+});
+
+// 🔄 NOUVEAU: Changer mot de passe
+router.put('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    console.log('🔐 === CHANGEMENT MOT DE PASSE ===');
+    console.log('User ID:', req.user.userId);
+
+    // Validation
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mot de passe actuel et nouveau mot de passe requis'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le nouveau mot de passe doit contenir au moins 6 caractères'
+      });
+    }
+
+    // Récupérer le mot de passe actuel
+    const user = await pool.query(
+      'SELECT id, password_hash FROM collaborators WHERE id = $1',
+      [req.user.userId]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    // Vérifier le mot de passe actuel
+    const isValidPassword = await bcrypt.compare(currentPassword, user.rows[0].password_hash);
+
+    if (!isValidPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mot de passe actuel incorrect'
+      });
+    }
+
+    // Hasher le nouveau mot de passe
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    // Mettre à jour en base
+    await pool.query(
+      'UPDATE collaborators SET password_hash = $1 WHERE id = $2',
+      [newPasswordHash, req.user.userId]
+    );
+
+    console.log('✅ Mot de passe changé avec succès');
+
+    res.json({
+      success: true,
+      message: 'Mot de passe changé avec succès'
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur changement mot de passe:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors du changement de mot de passe',
+      details: error.message
+    });
+  }
+});
+
+// === PROFIL COMPLET DU COLLABORATEUR (INCHANGÉ) ===
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -114,7 +502,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// === METTRE À JOUR LE PROFIL ===
+// === METTRE À JOUR LE PROFIL (INCHANGÉ) ===
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -177,7 +565,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// === CHANGER LE MOT DE PASSE ===
+// === CHANGER LE MOT DE PASSE (INCHANGÉ) ===
 router.put('/password', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -241,7 +629,7 @@ router.put('/password', authenticateToken, async (req, res) => {
   }
 });
 
-// === MARQUER CONTRAT COMME SIGNÉ ===
+// === MARQUER CONTRAT COMME SIGNÉ (INCHANGÉ) ===
 router.post('/contract/sign', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -292,7 +680,7 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
   }
 });
 
-// === TABLEAU DE BORD COLLABORATEUR ===
+// === TABLEAU DE BORD COLLABORATEUR (INCHANGÉ) ===
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
     // ✅ UNIQUEMENT les colonnes qui EXISTENT
@@ -400,7 +788,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
   }
 });
 
-// === LISTE DES COLLABORATEURS (ADMIN) ===
+// === LISTE DES COLLABORATEURS (ADMIN) (INCHANGÉ) ===
 router.get('/list', authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 20, search = '' } = req.query;
@@ -470,7 +858,7 @@ router.get('/list', authenticateToken, async (req, res) => {
   }
 });
 
-// === DÉSACTIVER UN COLLABORATEUR (ADMIN) ===
+// === DÉSACTIVER UN COLLABORATEUR (ADMIN) (INCHANGÉ) ===
 router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) => {
   try {
     const { collaboratorId } = req.params;
@@ -513,4 +901,3 @@ router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) 
 });
 
 module.exports = router;
-// Fixed for Render compatibility lun. 16 juin 2025 23:53:17 CEST

@@ -91,122 +91,495 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// GET /api/scans/initiatives - Récupérer toutes les initiatives
+// 📊 NOUVEAU: Statistiques personnelles par initiative
+router.get('/personal-stats', authenticateToken, async (req, res) => {
+  try {
+    console.log('📊 === DEMANDE STATS PERSONNELLES ===');
+    console.log('User ID:', req.user.id);
+
+    // Vérifier que l'utilisateur existe
+    const user = await pool.query(
+      'SELECT id, first_name, last_name FROM collaborators WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Utilisateur non trouvé'
+      });
+    }
+
+    console.log('✅ Utilisateur trouvé:', user.rows[0]);
+
+    // Récupérer les statistiques personnelles par initiative
+    const personalStats = await pool.query(`
+      SELECT 
+        initiative,
+        COUNT(*) as scan_count,
+        SUM(signatures) as total_personal_signatures,
+        AVG(quality) as avg_quality,
+        MIN(scan_date) as first_scan,
+        MAX(scan_date) as last_scan
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND signatures > 0
+      GROUP BY initiative
+      ORDER BY total_personal_signatures DESC
+    `, [req.user.id]);
+
+    console.log('📈 Stats personnelles trouvées:', personalStats.rows);
+
+    // Formater les résultats
+    const initiatives = personalStats.rows.map(stat => ({
+      name: stat.initiative || 'Initiative Inconnue',
+      personalSignatures: parseInt(stat.total_personal_signatures) || 0,
+      scanCount: parseInt(stat.scan_count) || 0,
+      avgQuality: parseFloat(stat.avg_quality) || 0,
+      firstScan: stat.first_scan,
+      lastScan: stat.last_scan
+    }));
+
+    // Calculer le total personnel
+    const totalPersonal = initiatives.reduce((sum, init) => sum + init.personalSignatures, 0);
+
+    // Statistiques globales personnelles
+    const globalPersonalStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_scans,
+        SUM(signatures) as total_signatures,
+        AVG(quality) as avg_quality,
+        COUNT(DISTINCT initiative) as initiative_count,
+        MIN(scan_date) as first_scan,
+        MAX(scan_date) as last_scan
+      FROM scans 
+      WHERE collaborator_id = $1
+    `, [req.user.id]);
+
+    const globalStats = globalPersonalStats.rows[0];
+
+    console.log('🎯 Réponse stats personnelles:', {
+      totalPersonal,
+      initiatives: initiatives.length,
+      totalScans: globalStats.total_scans
+    });
+
+    res.json({
+      success: true,
+      message: 'Statistiques personnelles récupérées',
+      userId: req.user.id,
+      userName: `${user.rows[0].first_name} ${user.rows[0].last_name}`,
+      totalPersonalSignatures: totalPersonal,
+      initiatives: initiatives,
+      globalStats: {
+        totalScans: parseInt(globalStats.total_scans) || 0,
+        totalSignatures: parseInt(globalStats.total_signatures) || 0,
+        avgQuality: parseFloat(globalStats.avg_quality) || 0,
+        initiativeCount: parseInt(globalStats.initiative_count) || 0,
+        firstScan: globalStats.first_scan,
+        lastScan: globalStats.last_scan
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur stats personnelles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des statistiques personnelles',
+      details: error.message
+    });
+  }
+});
+
+// 📅 NOUVEAU: Historique personnel quotidien
+router.get('/personal-history', authenticateToken, async (req, res) => {
+  try {
+    console.log('📅 === DEMANDE HISTORIQUE PERSONNEL ===');
+    console.log('User ID:', req.user.id);
+
+    // Récupérer l'historique des 30 derniers jours pour cet utilisateur
+    const personalHistory = await pool.query(`
+      SELECT 
+        DATE(scan_date) as scan_day,
+        COUNT(*) as scan_count,
+        SUM(signatures) as daily_signatures,
+        AVG(quality) as avg_quality,
+        STRING_AGG(DISTINCT initiative, ', ') as initiatives
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND scan_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY DATE(scan_date)
+      ORDER BY scan_day DESC
+      LIMIT 30
+    `, [req.user.id]);
+
+    console.log('📊 Historique personnel trouvé:', personalHistory.rows.length, 'jours');
+
+    // Formater les données d'historique
+    const history = personalHistory.rows.map(day => ({
+      date: day.scan_day,
+      scanDate: day.scan_day, // Alias pour compatibilité
+      scanCount: parseInt(day.scan_count) || 0,
+      personalSignatures: parseInt(day.daily_signatures) || 0,
+      signatures: parseInt(day.daily_signatures) || 0, // Alias pour compatibilité
+      avgQuality: parseFloat(day.avg_quality) || 0,
+      initiatives: day.initiatives || ''
+    }));
+
+    // Statistiques de la période
+    const periodStats = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT DATE(scan_date)) as active_days,
+        COUNT(*) as total_scans,
+        SUM(signatures) as total_signatures,
+        AVG(signatures) as avg_signatures_per_scan,
+        MAX(signatures) as max_signatures_in_one_scan,
+        MIN(scan_date) as period_start,
+        MAX(scan_date) as period_end
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND scan_date >= CURRENT_DATE - INTERVAL '30 days'
+    `, [req.user.id]);
+
+    const stats = periodStats.rows[0];
+
+    console.log('✅ Statistiques période:', {
+      activeDays: stats.active_days,
+      totalScans: stats.total_scans,
+      totalSignatures: stats.total_signatures
+    });
+
+    res.json({
+      success: true,
+      message: 'Historique personnel récupéré',
+      userId: req.user.id,
+      periodDays: 30,
+      history: history,
+      periodStats: {
+        activeDays: parseInt(stats.active_days) || 0,
+        totalScans: parseInt(stats.total_scans) || 0,
+        totalSignatures: parseInt(stats.total_signatures) || 0,
+        avgSignaturesPerScan: parseFloat(stats.avg_signatures_per_scan) || 0,
+        maxSignaturesInOneScan: parseInt(stats.max_signatures_in_one_scan) || 0,
+        periodStart: stats.period_start,
+        periodEnd: stats.period_end
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur historique personnel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération de l\'historique personnel',
+      details: error.message
+    });
+  }
+});
+
+// 🔍 NOUVEAU: Détails scan personnel
+router.get('/personal-details/:scanId', authenticateToken, async (req, res) => {
+  try {
+    const { scanId } = req.params;
+    console.log('🔍 === DÉTAILS SCAN PERSONNEL ===');
+    console.log('User ID:', req.user.id, 'Scan ID:', scanId);
+
+    // Vérifier que le scan appartient bien à cet utilisateur
+    const scan = await pool.query(`
+      SELECT 
+        s.*,
+        c.first_name,
+        c.last_name
+      FROM scans s
+      JOIN collaborators c ON s.collaborator_id = c.id
+      WHERE s.id = $1 AND s.collaborator_id = $2
+    `, [scanId, req.user.id]);
+
+    if (scan.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Scan non trouvé ou non autorisé'
+      });
+    }
+
+    const scanData = scan.rows[0];
+
+    console.log('✅ Scan trouvé:', {
+      id: scanData.id,
+      initiative: scanData.initiative,
+      signatures: scanData.signatures
+    });
+
+    res.json({
+      success: true,
+      message: 'Détails du scan récupérés',
+      scan: {
+        id: scanData.id,
+        initiative: scanData.initiative,
+        signaturesDetected: scanData.signatures,
+        qualityScore: scanData.quality,
+        confidence: scanData.confidence,
+        scanDate: scanData.scan_date,
+        photoCount: scanData.photo_count || 1,
+        location: scanData.location,
+        notes: scanData.notes,
+        collaborator: {
+          id: scanData.collaborator_id,
+          firstName: scanData.first_name,
+          lastName: scanData.last_name
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur détails scan:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des détails du scan',
+      details: error.message
+    });
+  }
+});
+
+// 🗑️ NOUVEAU: Supprimer un scan personnel
+router.delete('/personal/:scanId', authenticateToken, async (req, res) => {
+  try {
+    const { scanId } = req.params;
+    console.log('🗑️ === SUPPRESSION SCAN PERSONNEL ===');
+    console.log('User ID:', req.user.id, 'Scan ID:', scanId);
+
+    // Vérifier que le scan appartient à l'utilisateur
+    const scan = await pool.query(
+      'SELECT * FROM scans WHERE id = $1 AND collaborator_id = $2',
+      [scanId, req.user.id]
+    );
+
+    if (scan.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Scan non trouvé ou non autorisé'
+      });
+    }
+
+    // Supprimer le scan
+    await pool.query('DELETE FROM scans WHERE id = $1', [scanId]);
+
+    console.log('✅ Scan supprimé avec succès');
+
+    res.json({
+      success: true,
+      message: 'Scan supprimé avec succès',
+      deletedScanId: scanId
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur suppression scan:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la suppression du scan',
+      details: error.message
+    });
+  }
+});
+
+// 📝 NOUVEAU: Modifier les notes d'un scan personnel
+router.put('/personal/:scanId/notes', authenticateToken, async (req, res) => {
+  try {
+    const { scanId } = req.params;
+    const { notes, location } = req.body;
+    
+    console.log('📝 === MODIFICATION NOTES SCAN ===');
+    console.log('User ID:', req.user.id, 'Scan ID:', scanId);
+
+    // Vérifier que le scan appartient à l'utilisateur
+    const scan = await pool.query(
+      'SELECT * FROM scans WHERE id = $1 AND collaborator_id = $2',
+      [scanId, req.user.id]
+    );
+
+    if (scan.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Scan non trouvé ou non autorisé'
+      });
+    }
+
+    // Mettre à jour les notes
+    const updated = await pool.query(`
+      UPDATE scans 
+      SET 
+        notes = $1,
+        location = $2,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND collaborator_id = $4
+      RETURNING *
+    `, [notes, location, scanId, req.user.id]);
+
+    console.log('✅ Notes mises à jour');
+
+    res.json({
+      success: true,
+      message: 'Notes mises à jour avec succès',
+      scan: {
+        id: updated.rows[0].id,
+        notes: updated.rows[0].notes,
+        location: updated.rows[0].location,
+        updatedAt: updated.rows[0].updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur modification notes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la modification des notes',
+      details: error.message
+    });
+  }
+});
+
+// 📊 NOUVEAU: Statistiques rapides post-scan
+router.get('/quick-stats', authenticateToken, async (req, res) => {
+  try {
+    console.log('⚡ === STATS RAPIDES POST-SCAN ===');
+    console.log('User ID:', req.user.id);
+
+    const quickStats = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE scan_date >= CURRENT_DATE) as scans_today,
+        SUM(signatures) FILTER (WHERE scan_date >= CURRENT_DATE) as signatures_today,
+        COUNT(*) FILTER (WHERE scan_date >= CURRENT_DATE - INTERVAL '7 days') as scans_this_week,
+        SUM(signatures) FILTER (WHERE scan_date >= CURRENT_DATE - INTERVAL '7 days') as signatures_this_week,
+        COUNT(*) FILTER (WHERE scan_date >= DATE_TRUNC('month', CURRENT_DATE)) as scans_this_month,
+        SUM(signatures) FILTER (WHERE scan_date >= DATE_TRUNC('month', CURRENT_DATE)) as signatures_this_month,
+        MAX(scan_date) as last_scan_date
+      FROM scans 
+      WHERE collaborator_id = $1
+    `, [req.user.id]);
+
+    const stats = quickStats.rows[0];
+
+    res.json({
+      success: true,
+      message: 'Statistiques rapides récupérées',
+      quickStats: {
+        today: {
+          scans: parseInt(stats.scans_today) || 0,
+          signatures: parseInt(stats.signatures_today) || 0
+        },
+        thisWeek: {
+          scans: parseInt(stats.scans_this_week) || 0,
+          signatures: parseInt(stats.signatures_this_week) || 0
+        },
+        thisMonth: {
+          scans: parseInt(stats.scans_this_month) || 0,
+          signatures: parseInt(stats.signatures_this_month) || 0
+        },
+        lastScanDate: stats.last_scan_date
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur stats rapides:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des statistiques rapides',
+      details: error.message
+    });
+  }
+});
+
+// 🔄 MODIFIÉ: GET /api/scans/initiatives - Maintenant personnel
 router.get('/initiatives', authenticateToken, async (req, res) => {
   try {
-    console.log('📊 === RÉCUPÉRATION INITIATIVES ===');
-    
-    // Vérifier si les tables existent
-    const initiativesTableExists = await tableExists('initiatives');
-    const scansTableExists = await tableExists('scans');
-    const initiativeIdColumnExists = scansTableExists ? await columnExists('scans', 'initiative_id') : false;
-    
-    if (!initiativesTableExists) {
-      return res.status(404).json({
-        success: false,
-        error: 'Table initiatives non trouvée',
-        hint: 'Exécutez /api/scans/force-setup pour créer les tables'
-      });
-    }
-    
-    let query;
-    if (scansTableExists && initiativeIdColumnExists) {
-      // Requête complète avec les stats de scans
-      query = `
-        SELECT 
-          i.*,
-          COUNT(s.id) as total_scans,
-          COALESCE(SUM(s.signatures), 0) as total_signatures,
-          MAX(s.created_at) as last_scan_date
-        FROM initiatives i
-        LEFT JOIN scans s ON i.id = s.initiative_id
-        GROUP BY i.id
-        ORDER BY i.id ASC
-      `;
-    } else {
-      // Requête simple sans les scans
-      query = `
-        SELECT 
-          *,
-          0 as total_scans,
-          0 as total_signatures,
-          NULL as last_scan_date
-        FROM initiatives
-        ORDER BY id ASC
-      `;
-    }
-    
-    const result = await pool.query(query);
-    const initiatives = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      objective: row.objective,
-      color: row.color,
-      status: row.status,
-      totalScans: parseInt(row.total_scans) || 0,
-      totalSignatures: parseInt(row.total_signatures) || 0,
-      lastScanDate: row.last_scan_date
+    console.log('📊 === INITIATIVES PERSONNELLES ===');
+    console.log('User ID:', req.user.id);
+
+    const personalInitiatives = await pool.query(`
+      SELECT 
+        initiative,
+        COUNT(*) as scan_count,
+        SUM(signatures) as total_signatures,
+        AVG(quality) as avg_quality
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND signatures > 0
+      GROUP BY initiative
+      ORDER BY total_signatures DESC
+    `, [req.user.id]);
+
+    console.log('📈 Initiatives personnelles trouvées:', personalInitiatives.rows);
+
+    const initiatives = personalInitiatives.rows.map(init => ({
+      name: init.initiative || 'Initiative Inconnue',
+      totalSignatures: parseInt(init.total_signatures) || 0,
+      scanCount: parseInt(init.scan_count) || 0,
+      avgQuality: parseFloat(init.avg_quality) || 0
     }));
-    
-    console.log(`✅ ${initiatives.length} initiatives récupérées`);
-    res.json({ success: true, initiatives });
-    
+
+    res.json({
+      success: true,
+      message: 'Initiatives personnelles récupérées',
+      userId: req.user.id,
+      initiatives: initiatives
+    });
+
   } catch (error) {
-    console.error('❌ Erreur récupération initiatives:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Erreur initiatives personnelles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération des initiatives personnelles',
+      details: error.message
+    });
   }
 });
 
-// GET /api/scans/history - Récupérer l'historique des scans
+// 🔄 MODIFIÉ: GET /api/scans/history - Maintenant personnel
 router.get('/history', authenticateToken, async (req, res) => {
   try {
-    console.log('📈 === RÉCUPÉRATION HISTORIQUE ===');
-    
-    // Vérifier si la table scans existe
-    const scansTableExists = await tableExists('scans');
-    const userIdColumnExists = scansTableExists ? await columnExists('scans', 'user_id') : false;
-    
-    if (!scansTableExists || !userIdColumnExists) {
-      return res.status(404).json({
-        success: false,
-        error: 'Table scans ou colonne user_id non trouvée',
-        hint: 'Exécutez /api/scans/force-setup pour créer les tables'
-      });
-    }
-    
-    const userId = req.user.userId;
-    const days = parseInt(req.query.days) || 30;
-    
-    const query = `
+    console.log('📅 === HISTORIQUE PERSONNEL ===');
+    console.log('User ID:', req.user.id);
+
+    const personalHistory = await pool.query(`
       SELECT 
-        DATE(created_at) as scan_date,
+        DATE(scan_date) as date,
         COUNT(*) as scan_count,
-        SUM(signatures) as daily_signatures
+        SUM(signatures) as signatures
       FROM scans 
-      WHERE user_id = $1 
-        AND created_at >= NOW() - INTERVAL '${days} days'
-      GROUP BY DATE(created_at)
-      ORDER BY scan_date DESC
-    `;
-    
-    const result = await pool.query(query, [userId]);
-    const history = result.rows.map(row => ({
-      date: row.scan_date,
-      scans: parseInt(row.scan_count),
-      signatures: parseInt(row.daily_signatures) || 0
+      WHERE collaborator_id = $1
+        AND scan_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY DATE(scan_date)
+      ORDER BY date DESC
+      LIMIT 15
+    `, [req.user.id]);
+
+    console.log('📊 Historique personnel trouvé:', personalHistory.rows.length, 'jours');
+
+    const history = personalHistory.rows.map(day => ({
+      date: day.date,
+      scanDate: day.date,
+      signatures: parseInt(day.signatures) || 0,
+      totalSignatures: parseInt(day.signatures) || 0,
+      scanCount: parseInt(day.scan_count) || 0
     }));
-    
-    console.log(`✅ Historique récupéré: ${history.length} jours`);
-    res.json({ success: true, history });
-    
+
+    res.json({
+      success: true,
+      message: 'Historique personnel récupéré',
+      userId: req.user.id,
+      history: history
+    });
+
   } catch (error) {
-    console.error('❌ Erreur récupération historique:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Erreur historique personnel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la récupération de l\'historique personnel',
+      details: error.message
+    });
   }
 });
 
-// POST /api/scans/submit - Soumettre un nouveau scan
+// POST /api/scans/submit - Soumettre un nouveau scan (INCHANGÉ)
 router.post('/submit', authenticateToken, async (req, res) => {
   try {
     console.log('📸 === SOUMISSION SCAN ===');
@@ -224,9 +597,9 @@ router.post('/submit', authenticateToken, async (req, res) => {
     const initiativesTableExists = await tableExists('initiatives');
     const scansTableExists = await tableExists('scans');
     const initiativeIdColumnExists = scansTableExists ? await columnExists('scans', 'initiative_id') : false;
-    const userIdColumnExists = scansTableExists ? await columnExists('scans', 'user_id') : false;
+    const collaboratorIdColumnExists = scansTableExists ? await columnExists('scans', 'collaborator_id') : false;
     
-    if (!initiativesTableExists || !scansTableExists || !initiativeIdColumnExists || !userIdColumnExists) {
+    if (!initiativesTableExists || !scansTableExists || !initiativeIdColumnExists || !collaboratorIdColumnExists) {
       return res.status(404).json({
         success: false,
         error: 'Tables ou colonnes manquantes',
@@ -243,10 +616,10 @@ router.post('/submit', authenticateToken, async (req, res) => {
       });
     }
 
-    // Insérer le scan
+    // Insérer le scan avec collaborator_id
     const insertQuery = `
-      INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, notes, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      INSERT INTO scans (collaborator_id, initiative_id, signatures, quality, confidence, notes, scan_date, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
       RETURNING *
     `;
     
@@ -273,7 +646,7 @@ router.post('/submit', authenticateToken, async (req, res) => {
         signatures: scan.signatures,
         quality: scan.quality,
         confidence: scan.confidence,
-        timestamp: scan.created_at
+        timestamp: scan.scan_date
       },
       user: {
         userId: req.user.userId,
@@ -288,7 +661,7 @@ router.post('/submit', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/scans/force-setup - Configuration automatique de la base de données
+// GET /api/scans/force-setup - Configuration automatique de la base de données (INCHANGÉ)
 router.get('/force-setup', async (req, res) => {
   try {
     console.log('🔧 === CONFIGURATION BASE DE DONNÉES ===');
@@ -339,13 +712,14 @@ router.get('/force-setup', async (req, res) => {
     const createScansTable = `
       CREATE TABLE IF NOT EXISTS scans (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES collaborators(id),
+        collaborator_id INTEGER REFERENCES collaborators(id),
         initiative_id INTEGER REFERENCES initiatives(id),
         signatures INTEGER NOT NULL DEFAULT 0,
         quality INTEGER DEFAULT 85,
         confidence INTEGER DEFAULT 85,
         notes TEXT,
         file_path VARCHAR(255),
+        scan_date TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
@@ -360,21 +734,21 @@ router.get('/force-setup', async (req, res) => {
     // 5. Vérifier que les colonnes existent vraiment
     console.log('🔧 Étape 5: Vérification des colonnes...');
     const initiativeIdExists = await columnExists('scans', 'initiative_id');
-    const userIdExists = await columnExists('scans', 'user_id');
+    const collaboratorIdExists = await columnExists('scans', 'collaborator_id');
     
     console.log(`🔍 Colonne initiative_id existe: ${initiativeIdExists}`);
-    console.log(`🔍 Colonne user_id existe: ${userIdExists}`);
+    console.log(`🔍 Colonne collaborator_id existe: ${collaboratorIdExists}`);
     
-    if (!initiativeIdExists || !userIdExists) {
+    if (!initiativeIdExists || !collaboratorIdExists) {
       throw new Error('Les colonnes de la table scans n\'ont pas été créées correctement');
     }
 
     // 6. Créer des index pour optimiser les performances
     console.log('🔧 Étape 6: Création des index...');
     const indexes = [
-      'CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_scans_collaborator_id ON scans(collaborator_id)',
       'CREATE INDEX IF NOT EXISTS idx_scans_initiative_id ON scans(initiative_id)',
-      'CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_scans_scan_date ON scans(scan_date)',
       'CREATE INDEX IF NOT EXISTS idx_initiatives_status ON initiatives(status)'
     ];
 
@@ -407,8 +781,8 @@ router.get('/force-setup', async (req, res) => {
           
           try {
             await pool.query(`
-              INSERT INTO scans (user_id, initiative_id, signatures, quality, confidence, created_at)
-              VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days')
+              INSERT INTO scans (collaborator_id, initiative_id, signatures, quality, confidence, scan_date, created_at)
+              VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '${daysAgo} days', NOW())
             `, [randomUser.id, randomInitiative.id, randomSignatures, randomQuality, randomQuality - 5]);
             
             if ((i + 1) % 10 === 0) {
@@ -445,7 +819,7 @@ router.get('/force-setup', async (req, res) => {
       message: "🎉 Base de données KOLECT configurée avec succès!",
       tables: {
         created: ["initiatives", "scans"],
-        indexed: ["user_id", "initiative_id", "created_at"],
+        indexed: ["collaborator_id", "initiative_id", "scan_date"],
         order: "1. initiatives → 2. données → 3. scans → 4. vérification → 5. index → 6. test data"
       },
       data: {
@@ -455,7 +829,7 @@ router.get('/force-setup', async (req, res) => {
       },
       verification: {
         initiative_id_column: await columnExists('scans', 'initiative_id'),
-        user_id_column: await columnExists('scans', 'user_id'),
+        collaborator_id_column: await columnExists('scans', 'collaborator_id'),
         initiatives_table: await tableExists('initiatives'),
         scans_table: await tableExists('scans')
       },
@@ -477,13 +851,15 @@ router.get('/force-setup', async (req, res) => {
         admin: "/api/scans/admin",
         initiatives: "/api/scans/initiatives",
         history: "/api/scans/history",
-        submit: "POST /api/scans/submit"
+        submit: "POST /api/scans/submit",
+        personalStats: "GET /api/scans/personal-stats",
+        personalHistory: "GET /api/scans/personal-history"
       },
       nextSteps: [
         "1. Tester l'interface debug: /api/scans/debug/tables",
         "2. Accéder à l'admin: /api/scans/admin",
-        "3. Tester les endpoints API",
-        "4. Vérifier les données dans l'app mobile"
+        "3. Tester les endpoints API personnels",
+        "4. Vérifier les données personnelles dans l'app mobile"
       ],
       timestamp: new Date().toISOString()
     });
@@ -500,7 +876,7 @@ router.get('/force-setup', async (req, res) => {
   }
 });
 
-// GET /api/scans/debug/tables - Interface de debug sécurisée
+// GET /api/scans/debug/tables - Interface de debug sécurisée (INCHANGÉ)
 router.get('/debug/tables', async (req, res) => {
   try {
     console.log('🔍 === DEBUG TABLES ===');
@@ -569,8 +945,8 @@ router.get('/debug/tables', async (req, res) => {
           SELECT s.*, i.name as initiative_name, c.first_name, c.last_name 
           FROM scans s 
           LEFT JOIN initiatives i ON s.initiative_id = i.id 
-          LEFT JOIN collaborators c ON s.user_id = c.id 
-          ORDER BY s.created_at DESC 
+          LEFT JOIN collaborators c ON s.collaborator_id = c.id 
+          ORDER BY s.scan_date DESC 
           LIMIT 20
         `);
         scans.push(...scansResult.rows);
@@ -607,7 +983,7 @@ router.get('/debug/tables', async (req, res) => {
     <div class="container">
         <div class="header">
             <h1>🔍 KOLECT Debug Interface</h1>
-            <p>Base de données - ${new Date().toLocaleString('fr-FR')}</p>
+            <p>Base de données personnelles - ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
         ${!initiativesExists || !scansExists || !initiativeIdExists ? `
@@ -621,7 +997,7 @@ router.get('/debug/tables', async (req, res) => {
         ` : `
         <div class="alert alert-success">
             <strong>✅ Configuration parfaite !</strong><br>
-            Toutes les tables et colonnes sont présentes.
+            Toutes les tables et colonnes sont présentes pour les statistiques personnelles.
         </div>
         `}
 
@@ -629,7 +1005,7 @@ router.get('/debug/tables', async (req, res) => {
             <h2>📊 Statistiques</h2>
             <div class="stat">👥 ${tablesList.find(t => t.name === 'collaborators')?.count || 0} Collaborateurs</div>
             <div class="stat">🎯 ${tablesList.find(t => t.name === 'initiatives')?.count || 0} Initiatives</div>
-            <div class="stat">📸 ${tablesList.find(t => t.name === 'scans')?.count || 0} Scans</div>
+            <div class="stat">📸 ${tablesList.find(t => t.name === 'scans')?.count || 0} Scans personnels</div>
             <div class="stat">📋 ${tablesList.length} Tables</div>
         </div>
 
@@ -676,7 +1052,7 @@ router.get('/debug/tables', async (req, res) => {
 
         ${scans.length > 0 ? `
         <div class="section">
-            <h2>📸 Scans Récents</h2>
+            <h2>📸 Scans Personnels Récents</h2>
             <table>
                 <thead>
                     <tr><th>ID</th><th>Collecteur</th><th>Initiative</th><th>Signatures</th><th>Qualité</th><th>Date</th></tr>
@@ -689,7 +1065,7 @@ router.get('/debug/tables', async (req, res) => {
                             <td><strong>${scan.initiative_name}</strong></td>
                             <td><strong>${scan.signatures}</strong></td>
                             <td>${scan.quality}%</td>
-                            <td>${new Date(scan.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td>${new Date(scan.scan_date).toLocaleDateString('fr-FR')}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -722,7 +1098,7 @@ router.get('/debug/tables', async (req, res) => {
   }
 });
 
-// GET /api/scans/admin - Interface d'administration sécurisée
+// GET /api/scans/admin - Interface d'administration sécurisée (INCHANGÉ avec mention personnelles)
 router.get('/admin', async (req, res) => {
   try {
     console.log('🎨 === INTERFACE ADMIN ===');
@@ -730,7 +1106,7 @@ router.get('/admin', async (req, res) => {
     // Vérifier les tables avant de faire les requêtes
     const initiativesExists = await tableExists('initiatives');
     const scansExists = await tableExists('scans');
-    const initiativeIdExists = scansExists ? await columnExists('scans', 'initiative_id') : false;
+    const collaboratorIdExists = scansExists ? await columnExists('scans', 'collaborator_id') : false;
 
     const adminHTML = `
 <!DOCTYPE html>
@@ -759,25 +1135,25 @@ router.get('/admin', async (req, res) => {
     <div class="container">
         <div class="header">
             <h1>🎯 KOLECT Admin</h1>
-            <p>Interface d'administration</p>
+            <p>Interface d'administration - Statistiques Personnelles</p>
             <p style="font-size: 0.9rem;">Dernière mise à jour: ${new Date().toLocaleString('fr-FR')}</p>
         </div>
 
-        ${!initiativesExists || !scansExists || !initiativeIdExists ? `
+        ${!initiativesExists || !scansExists || !collaboratorIdExists ? `
         <div class="alert alert-warning">
             <h3>⚠️ Configuration Requise</h3>
             <p>Problèmes détectés :</p>
             <ul>
                 ${!initiativesExists ? '<li>❌ Table "initiatives" non trouvée</li>' : ''}
                 ${!scansExists ? '<li>❌ Table "scans" non trouvée</li>' : ''}
-                ${scansExists && !initiativeIdExists ? '<li>❌ Colonne "initiative_id" manquante</li>' : ''}
+                ${scansExists && !collaboratorIdExists ? '<li>❌ Colonne "collaborator_id" manquante</li>' : ''}
             </ul>
             <p><strong>Action requise :</strong> Cliquez sur "Setup Database" pour corriger ces problèmes.</p>
         </div>
         ` : `
         <div class="alert alert-success">
             <h3>✅ Configuration Parfaite</h3>
-            <p>Toutes les tables et colonnes sont présentes et fonctionnelles !</p>
+            <p>Toutes les tables et colonnes sont présentes pour les statistiques personnelles !</p>
         </div>
         `}
 
@@ -804,8 +1180,8 @@ router.get('/admin', async (req, res) => {
                 
                 <div class="action-card">
                     <h3>📱 App Mobile</h3>
-                    <p>Tester les endpoints API</p>
-                    <a href="/api/scans/initiatives" class="btn btn-primary">🔗 Test API</a>
+                    <p>Tester les endpoints API personnels</p>
+                    <a href="/api/scans/personal-stats" class="btn btn-primary">🔗 Test API</a>
                     <small style="display: block; margin-top: 5px; color: #666;">
                         (Nécessite un token d'authentification)
                     </small>
@@ -820,14 +1196,14 @@ router.get('/admin', async (req, res) => {
                 <ul>
                     <li>Table initiatives : ${initiativesExists ? '✅ Présente' : '❌ Manquante'}</li>
                     <li>Table scans : ${scansExists ? '✅ Présente' : '❌ Manquante'}</li>
-                    <li>Colonne initiative_id : ${initiativeIdExists ? '✅ Présente' : '❌ Manquante'}</li>
+                    <li>Colonne collaborator_id : ${collaboratorIdExists ? '✅ Présente' : '❌ Manquante'}</li>
                 </ul>
                 
                 <h4>💡 Actions recommandées :</h4>
                 <ol>
                     <li><strong>Setup Database</strong> → Corrige automatiquement tous les problèmes</li>
                     <li><strong>Debug Interface</strong> → Vérifie que tout fonctionne</li>
-                    <li><strong>Test App Mobile</strong> → Confirme que les endpoints marchent</li>
+                    <li><strong>Test App Mobile</strong> → Confirme que les endpoints personnels marchent</li>
                 </ol>
             </div>
         </div>
