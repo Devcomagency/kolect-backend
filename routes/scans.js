@@ -1,7 +1,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth'); // ✅ IMPORT CENTRALISÉ
 const router = express.Router();
 
 // Configuration PostgreSQL

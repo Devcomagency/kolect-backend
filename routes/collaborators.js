@@ -1,6 +1,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const { authenticateToken } = require('../middleware/auth'); // ✅ IMPORT CENTRALISÉ
 const router = express.Router();
 
 // Configuration PostgreSQL
@@ -9,45 +10,28 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === MIDDLEWARE D'AUTHENTIFICATION ===
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token d\'accès requis' });
-  }
-
-  const jwt = require('jsonwebtoken');
-  const jwtSecret = process.env.JWT_SECRET || 'kolect-secret-default-2025';
-  
-  jwt.verify(token, jwtSecret, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Token invalide' });
-    }
-    req.user = user;
-    next();
-  });
-};
+// =======================================
+// 🔐 ENDPOINTS PERSONNELS AVEC user_id
+// =======================================
 
 // 🔐 NOUVEAU: Mes paramètres personnels
 router.get('/personal-settings', authenticateToken, async (req, res) => {
   try {
     console.log('⚙️ === PARAMÈTRES PERSONNELS ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
 
     const settings = await pool.query(`
       SELECT 
         c.*,
         COUNT(s.id) as total_scans,
         SUM(s.signatures) as total_signatures,
-        MAX(s.scan_date) as last_scan_date,
+        MAX(s.created_at) as last_scan_date,
         AVG(s.quality) as avg_quality
       FROM collaborators c
       LEFT JOIN scans s ON c.id = s.user_id
       WHERE c.id = $1
       GROUP BY c.id
-    `, [req.user.userId]);
+    `, [req.user.id]);
 
     if (settings.rows.length === 0) {
       return res.status(404).json({
@@ -78,8 +62,6 @@ router.get('/personal-settings', authenticateToken, async (req, res) => {
         emergencyContactPhone: user.emergency_contact_phone,
         status: user.status,
         contractSigned: user.contract_signed,
-        contractSignedAt: user.contract_signed_at,
-        contractPdfUrl: user.contract_pdf_url,
         createdAt: user.created_at,
         stats: {
           totalScans: parseInt(user.total_scans) || 0,
@@ -117,7 +99,7 @@ router.put('/update-personal', authenticateToken, async (req, res) => {
     } = req.body;
     
     console.log('✏️ === MISE À JOUR INFOS PERSONNELLES ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
     console.log('Nouvelles infos:', { firstName, lastName, phone, city });
 
     // Validation basique
@@ -154,7 +136,7 @@ router.put('/update-personal', authenticateToken, async (req, res) => {
       birthDate,
       emergencyContactName,
       emergencyContactPhone,
-      req.user.userId
+      req.user.id
     ]);
 
     if (updated.rows.length === 0) {
@@ -197,11 +179,11 @@ router.put('/update-personal', authenticateToken, async (req, res) => {
 router.get('/personal-monthly', authenticateToken, async (req, res) => {
   try {
     console.log('📈 === RÉSUMÉ MENSUEL PERSONNEL ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
 
     const monthlyData = await pool.query(`
       SELECT 
-        DATE_TRUNC('month', scan_date) as month,
+        DATE_TRUNC('month', created_at) as month,
         COUNT(*) as scan_count,
         SUM(signatures) as monthly_signatures,
         AVG(quality) as avg_quality,
@@ -209,10 +191,10 @@ router.get('/personal-monthly', authenticateToken, async (req, res) => {
         STRING_AGG(DISTINCT initiative, ', ') as initiatives
       FROM scans 
       WHERE user_id = $1 
-        AND scan_date >= CURRENT_DATE - INTERVAL '12 months'
-      GROUP BY DATE_TRUNC('month', scan_date)
+        AND created_at >= CURRENT_DATE - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', created_at)
       ORDER BY month DESC
-    `, [req.user.userId]);
+    `, [req.user.id]);
 
     const monthly = monthlyData.rows.map(month => ({
       month: month.month,
@@ -226,7 +208,7 @@ router.get('/personal-monthly', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       message: 'Résumé mensuel personnel récupéré',
-      userId: req.user.userId,
+      userId: req.user.id,
       monthlyData: monthly
     });
 
@@ -244,7 +226,7 @@ router.get('/personal-monthly', authenticateToken, async (req, res) => {
 router.get('/personal-ranking', authenticateToken, async (req, res) => {
   try {
     console.log('🏆 === CLASSEMENT PERSONNEL ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
 
     // Calculer le rang de l'utilisateur sans révéler les autres utilisateurs
     const userRank = await pool.query(`
@@ -265,7 +247,7 @@ router.get('/personal-ranking', authenticateToken, async (req, res) => {
         (SELECT COUNT(DISTINCT user_id) FROM scans WHERE signatures > 0) as total_collaborators
       FROM user_stats 
       WHERE user_id = $1
-    `, [req.user.userId]);
+    `, [req.user.id]);
 
     let ranking = null;
     if (userRank.rows.length > 0) {
@@ -284,7 +266,7 @@ router.get('/personal-ranking', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       message: 'Classement personnel calculé',
-      userId: req.user.userId,
+      userId: req.user.id,
       ranking: ranking
     });
 
@@ -302,11 +284,11 @@ router.get('/personal-ranking', authenticateToken, async (req, res) => {
 router.get('/check-permissions', authenticateToken, async (req, res) => {
   try {
     console.log('🔐 === VÉRIFICATION PERMISSIONS ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
 
     const user = await pool.query(
       'SELECT id, email, first_name, last_name, status FROM collaborators WHERE id = $1',
-      [req.user.userId]
+      [req.user.id]
     );
 
     if (user.rows.length === 0) {
@@ -351,7 +333,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     
     console.log('🔐 === CHANGEMENT MOT DE PASSE ===');
-    console.log('User ID:', req.user.userId);
+    console.log('User ID:', req.user.id);
 
     // Validation
     if (!currentPassword || !newPassword) {
@@ -371,7 +353,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     // Récupérer le mot de passe actuel
     const user = await pool.query(
       'SELECT id, password_hash FROM collaborators WHERE id = $1',
-      [req.user.userId]
+      [req.user.id]
     );
 
     if (user.rows.length === 0) {
@@ -398,7 +380,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     // Mettre à jour en base
     await pool.query(
       'UPDATE collaborators SET password_hash = $1 WHERE id = $2',
-      [newPasswordHash, req.user.userId]
+      [newPasswordHash, req.user.id]
     );
 
     console.log('✅ Mot de passe changé avec succès');
@@ -418,14 +400,18 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-// === PROFIL COMPLET DU COLLABORATEUR (INCHANGÉ) ===
+// =======================================
+// 📊 ENDPOINTS EXISTANTS (CORRIGÉS)
+// =======================================
+
+// === PROFIL COMPLET DU COLLABORATEUR ===
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
       return res.status(500).json({ error: 'Base de données non configurée' });
     }
 
-    console.log('🔍 Récupération profil pour userId:', req.user.userId);
+    console.log('🔍 Récupération profil pour userId:', req.user.id);
 
     // ✅ COLONNES QUI EXISTENT VRAIMENT SUR RENDER
     const userResult = await pool.query(`
@@ -439,7 +425,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         contract_signed
       FROM collaborators 
       WHERE id = $1
-    `, [req.user.userId]);
+    `, [req.user.id]);
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'Collaborateur non trouvé' });
@@ -502,7 +488,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// === METTRE À JOUR LE PROFIL (INCHANGÉ) ===
+// === METTRE À JOUR LE PROFIL ===
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -515,7 +501,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
       phone
     } = req.body;
 
-    console.log('📝 Mise à jour profil utilisateur:', req.user.userId);
+    console.log('📝 Mise à jour profil utilisateur:', req.user.id);
 
     // ✅ UNIQUEMENT les colonnes qui EXISTENT
     const updateQuery = `
@@ -532,7 +518,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
       firstName,
       lastName,
       phone,
-      req.user.userId
+      req.user.id
     ]);
 
     if (result.rows.length === 0) {
@@ -565,7 +551,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// === CHANGER LE MOT DE PASSE (INCHANGÉ) ===
+// === CHANGER LE MOT DE PASSE ===
 router.put('/password', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -586,12 +572,12 @@ router.put('/password', authenticateToken, async (req, res) => {
       });
     }
 
-    console.log('🔐 Changement mot de passe utilisateur:', req.user.userId);
+    console.log('🔐 Changement mot de passe utilisateur:', req.user.id);
 
     // Vérifier le mot de passe actuel
     const userResult = await pool.query(
       'SELECT password_hash FROM collaborators WHERE id = $1',
-      [req.user.userId]
+      [req.user.id]
     );
 
     if (userResult.rows.length === 0) {
@@ -610,10 +596,10 @@ router.put('/password', authenticateToken, async (req, res) => {
     // ✅ Pas de colonne updated_at qui n'existe pas
     await pool.query(
       'UPDATE collaborators SET password_hash = $1 WHERE id = $2',
-      [newPasswordHash, req.user.userId]
+      [newPasswordHash, req.user.id]
     );
 
-    console.log('✅ Mot de passe changé avec succès pour:', req.user.userId);
+    console.log('✅ Mot de passe changé avec succès pour:', req.user.id);
 
     res.json({
       success: true,
@@ -629,7 +615,7 @@ router.put('/password', authenticateToken, async (req, res) => {
   }
 });
 
-// === MARQUER CONTRAT COMME SIGNÉ (INCHANGÉ) ===
+// === MARQUER CONTRAT COMME SIGNÉ ===
 router.post('/contract/sign', authenticateToken, async (req, res) => {
   try {
     if (!pool) {
@@ -638,7 +624,7 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
 
     const { signatureData, contractVersion, signedAt } = req.body;
 
-    console.log('✍️ Signature contrat utilisateur:', req.user.userId);
+    console.log('✍️ Signature contrat utilisateur:', req.user.id);
 
     // ✅ UNIQUEMENT les colonnes qui EXISTENT
     const updateQuery = `
@@ -649,7 +635,7 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
       RETURNING id, first_name, last_name, email
     `;
 
-    const result = await pool.query(updateQuery, [req.user.userId]);
+    const result = await pool.query(updateQuery, [req.user.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Collaborateur non trouvé' });
@@ -680,13 +666,13 @@ router.post('/contract/sign', authenticateToken, async (req, res) => {
   }
 });
 
-// === TABLEAU DE BORD COLLABORATEUR (INCHANGÉ) ===
+// === TABLEAU DE BORD COLLABORATEUR ===
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
     // ✅ UNIQUEMENT les colonnes qui EXISTENT
     const userResult = await pool.query(
       'SELECT first_name, last_name, email, contract_signed FROM collaborators WHERE id = $1',
-      [req.user.userId]
+      [req.user.id]
     );
 
     if (userResult.rows.length === 0) {
@@ -788,7 +774,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
   }
 });
 
-// === LISTE DES COLLABORATEURS (ADMIN) (INCHANGÉ) ===
+// === LISTE DES COLLABORATEURS (ADMIN) ===
 router.get('/list', authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 20, search = '' } = req.query;
@@ -858,13 +844,13 @@ router.get('/list', authenticateToken, async (req, res) => {
   }
 });
 
-// === DÉSACTIVER UN COLLABORATEUR (ADMIN) (INCHANGÉ) ===
+// === DÉSACTIVER UN COLLABORATEUR (ADMIN) ===
 router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) => {
   try {
     const { collaboratorId } = req.params;
     const { reason } = req.body;
 
-    console.log('⚠️ Désactivation collaborateur:', collaboratorId, 'par admin:', req.user.userId);
+    console.log('⚠️ Désactivation collaborateur:', collaboratorId, 'par admin:', req.user.id);
 
     // ✅ Utiliser colonne 'status' qui EXISTE
     const result = await pool.query(
@@ -886,7 +872,7 @@ router.patch('/:collaboratorId/deactivate', authenticateToken, async (req, res) 
         name: `${collaborator.first_name} ${collaborator.last_name}`,
         email: collaborator.email
       },
-      deactivatedBy: req.user.userId,
+      deactivatedBy: req.user.id,
       deactivatedAt: new Date().toISOString(),
       reason
     });

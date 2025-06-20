@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔐 KOLECT Admin Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        .kolect-primary { background-color: #4ECDC4; }
+        .kolect-secondary { background-color: #35A085; }
+        .text-kolect-primary { color: #4ECDC4; }
+        .border-kolect-primary { border-color: #4ECDC4; }
+        .glassmorphism {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .sidebar-item {
+            transition: all 0.3s ease;
+        }
+        .sidebar-item:hover {
+            background: rgba(78, 205, 196, 0.2);
+            transform: translateX(5px);
+        }
+        .stat-card {
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(53, 160, 133, 0.1));
+            transition: transform 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <!-- Login Modal (Initially Hidden) -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
+        <div class="glassmorphism p-8 rounded-2xl max-w-md w-full mx-4">
+            <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold text-kolect-primary">🔐 KOLECT ADMIN</h1>
+                <p class="text-gray-300 mt-2">Plateforme d'administration</p>
+            </div>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <input type="email" id="loginEmail" placeholder="Email administrateur"
+                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none">
+                </div>
+                <div class="mb-6">
+                    <input type="password" id="loginPassword" placeholder="Mot de passe"
+                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none">
+                </div>
+                <button type="submit"
+                        class="w-full kolect-primary text-gray-900 p-4 rounded-lg font-bold text-lg hover:opacity-90 transition-opacity">
+                    Se connecter
+                </button>
+                <div id="loginError" class="text-red-400 text-sm mt-3 hidden"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Admin Interface -->
+    <div id="adminInterface" class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="w-64 bg-gray-800 border-r border-gray-700">
+            <div class="p-6 border-b border-gray-700">
+                <h1 class="text-xl font-bold text-kolect-primary">🔐 KOLECT ADMIN</h1>
+                <p class="text-gray-400 text-sm mt-1">Plateforme de gestion</p>
+            </div>
+            
+            <nav class="mt-6">
+                <a href="#dashboard" class="sidebar-item flex items-center px-6 py-3 text-white hover:text-kolect-primary active">
+                    <span class="mr-3">🏠</span> Dashboard
+                </a>
+                <a href="#collaborators" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3">👥</span> Collaborateurs
+                </a>
+                <a href="#validation" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3">🔍</span> Validation Scans
+                </a>
+                <a href="#analytics" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3">📊</span> Analytics
+                </a>
+                <a href="#settings" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3">⚙️</span> Paramètres
+                </a>
+            </nav>
+
+            <div class="absolute bottom-4 left-4 right-4">
+                <button id="logoutBtn" class="w-full bg-red-600 text-white p-3 rounded-lg hover:bg-red-700 transition-colors">
+                    🚪 Déconnexion
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 overflow-auto">
+            <!-- Header -->
+            <header class="bg-gray-800 border-b border-gray-700 p-4">
+                <div class="flex justify-between items-center">
+                    <h2 id="pageTitle" class="text-2xl font-bold">📊 Dashboard Général</h2>
+                    <div class="flex items-center space-x-4">
+                        <div id="alertsCounter" class="bg-red-500 text-white px-3 py-1 rounded-full text-sm">
+                            ⚠️ <span id="alertsCount">0</span>
+                        </div>
+                        <div class="text-sm text-gray-300">
+                            <span id="adminName">Admin</span> • <span id="currentTime"></span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main id="contentArea" class="p-6">
+                <!-- Dashboard Content -->
+                <div id="dashboardContent">
+                    <!-- KPIs Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                        <div class="stat-card p-6 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Collaborateurs Actifs</p>
+                                    <p id="activeCollaborators" class="text-3xl font-bold text-kolect-primary">-</p>
+                                </div>
+                                <div class="text-3xl">👥</div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card p-6 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Scans Aujourd'hui</p>
+                                    <p id="scansToday" class="text-3xl font-bold text-kolect-primary">-</p>
+                                </div>
+                                <div class="text-3xl">📸</div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card p-6 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Total Signatures</p>
+                                    <p id="totalSignatures" class="text-3xl font-bold text-kolect-primary">-</p>
+                                </div>
+                                <div class="text-3xl">✍️</div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card p-6 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Qualité Moyenne</p>
+                                    <p id="avgQuality" class="text-3xl font-bold text-kolect-primary">-</p>
+                                </div>
+                                <div class="text-3xl">⭐</div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card p-6 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-400 text-sm">En Attente</p>
+                                    <p id="pendingValidation" class="text-3xl font-bold text-yellow-400">-</p>
+                                </div>
+                                <div class="text-3xl">⏳</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts and Tables Row -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                        <!-- Top Performers -->
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <h3 class="text-xl font-bold mb-4 flex items-center">
+                                🏆 Top Performers
+                                <button class="ml-auto text-sm bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
+                                    Voir tous
+                                </button>
+                            </h3>
+                            <div id="topPerformers" class="space-y-3">
+                                <!-- Loaded dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Recent Activity -->
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <h3 class="text-xl font-bold mb-4 flex items-center">
+                                ⚡ Activité Récente
+                                <button class="ml-auto text-sm bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
+                                    Actualiser
+                                </button>
+                            </h3>
+                            <div id="recentActivity" class="space-y-2">
+                                <!-- Loaded dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alerts and Actions -->
+                    <div class="glassmorphism p-6 rounded-xl">
+                        <h3 class="text-xl font-bold mb-4">⚠️ Alertes & Actions Rapides</h3>
+                        <div id="alertsAndActions" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collaborators Content (Hidden by default) -->
+                <div id="collaboratorsContent" style="display: none;">
+                    <div class="mb-6 flex justify-between items-center">
+                        <div class="flex space-x-4">
+                            <input type="text" id="searchCollaborators" placeholder="Rechercher..."
+                                   class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
+                            <select id="filterStatus" class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
+                                <option value="all">Tous les statuts</option>
+                                <option value="active">Actifs</option>
+                                <option value="suspended">Suspendus</option>
+                                <option value="inactive">Inactifs</option>
+                            </select>
+                        </div>
+                        <button id="exportCollaborators" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                            📄 Export CSV
+                        </button>
+                    </div>
+
+                    <div class="glassmorphism rounded-xl overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-6 py-3 text-left">👤 Collaborateur</th>
+                                    <th class="px-6 py-3 text-left">📊 Performances</th>
+                                    <th class="px-6 py-3 text-left">📅 Dernière activité</th>
+                                    <th class="px-6 py-3 text-left">🔄 Statut</th>
+                                    <th class="px-6 py-3 text-left">⚙️ Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="collaboratorsTable">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Validation Content (Hidden by default) -->
+                <div id="validationContent" style="display: none;">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-bold mb-4">🔍 Scans en Attente de Validation</h3>
+                        <div class="flex space-x-4">
+                            <select id="filterValidationType" class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
+                                <option value="all">Tous les types</option>
+                                <option value="low_quality">Qualité faible (&lt;70%)</option>
+                                <option value="high_count">Trop de signatures (&gt;25)</option>
+                                <option value="low_count">Peu de signatures (&lt;3)</option>
+                                <option value="suspicious">Suspects</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="pendingScansGrid" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal for Scan Validation -->
+    <div id="scanValidationModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
+        <div class="glassmorphism p-6 rounded-2xl max-w-2xl w-full mx-4 max-h-90vh overflow-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">🔍 Validation de Scan</h3>
+                <button id="closeValidationModal" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div id="scanValidationContent">
+                <!-- Loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class KolectAdmin {
+            constructor() {
+                this.baseURL = window.location.origin;
+                this.token = localStorage.getItem('adminToken');
+                this.currentPage = 'dashboard';
+                this.init();
+            }
+
+            async init() {
+                this.updateTime();
+                setInterval(() => this.updateTime(), 1000);
+
+                if (!this.token) {
+                    this.showLogin();
+                    return;
+                }
+
+                await this.loadDashboard();
+                this.setupEventListeners();
+            }
+
+            updateTime() {
+                const now = new Date();
+                document.getElementById('currentTime').textContent = now.toLocaleTimeString('fr-FR');
+            }
+
+            showLogin() {
+                document.getElementById('loginModal').style.display = 'flex';
+                document.getElementById('adminInterface').style.display = 'none';
+            }
+
+            hideLogin() {
+                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('adminInterface').style.display = 'flex';
+            }
+
+            async apiCall(endpoint, options = {}) {
+                try {
+                    const response = await fetch(`${this.baseURL}/api/admin${endpoint}`, {
+                        ...options,
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        }
+                    });
+
+                    if (response.status === 403 || response.status === 401) {
+                        this.logout();
+                        return null;
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API Error:', error);
+                    return null;
+                }
+            }
+
+            async login(email, password) {
+                try {
+                    const response = await fetch(`${this.baseURL}/api/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success && data.user.role && (data.user.role === 'admin' || data.user.role === 'super_admin')) {
+                        this.token = data.token;
+                        localStorage.setItem('adminToken', this.token);
+                        localStorage.setItem('adminName', data.user.firstName || 'Admin');
+                        document.getElementById('adminName').textContent = data.user.firstName || 'Admin';
+                        this.hideLogin();
+                        await this.loadDashboard();
+                        this.setupEventListeners();
+                        return true;
+                    } else {
+                        throw new Error('Accès admin requis');
+                    }
+                } catch (error) {
+                    document.getElementById('loginError').textContent = error.message;
+                    document.getElementById('loginError').classList.remove('hidden');
+                    return false;
+                }
+            }
+
+            logout() {
+                localStorage.removeItem('adminToken');
+                localStorage.removeItem('adminName');
+                this.token = null;
+                this.showLogin();
+            }
+
+            async loadDashboard() {
+                // Simulate API call for demo
+                const mockData = {
+                    success: true,
+                    stats: {
+                        active_collaborators: 47,
+                        scans_today: 156,
+                        total_signatures: 2847,
+                        avg_quality: 87,
+                        pending_validation: 12
+                    },
+                    topPerformers: [
+                        { first_name: 'Marie', last_name: 'Dubois', total_signatures: 347 },
+                        { first_name: 'Jean', last_name: 'Laurent', total_signatures: 298 },
+                        { first_name: 'Paul', last_name: 'Martin', total_signatures: 276 },
+                        { first_name: 'Sophie', last_name: 'Bernard', total_signatures: 245 },
+                        { first_name: 'Lucas', last_name: 'Petit', total_signatures: 223 }
+                    ],
+                    recentActivity: [
+                        { first_name: 'Marie', last_name: 'D.', signatures: 23, created_at: '2025-06-20T15:30:00Z' },
+                        { first_name: 'Jean', last_name: 'L.', signatures: 18, created_at: '2025-06-20T15:25:00Z' },
+                        { first_name: 'Paul', last_name: 'M.', signatures: 15, created_at: '2025-06-20T15:20:00Z' }
+                    ]
+                };
+
+                this.renderDashboard(mockData);
+            }
+
+            renderDashboard(data) {
+                if (!data?.success) return;
+
+                // Update KPIs
+                document.getElementById('activeCollaborators').textContent = data.stats.active_collaborators;
+                document.getElementById('scansToday').textContent = data.stats.scans_today;
+                document.getElementById('totalSignatures').textContent = data.stats.total_signatures.toLocaleString();
+                document.getElementById('avgQuality').textContent = data.stats.avg_quality + '%';
+                document.getElementById('pendingValidation').textContent = data.stats.pending_validation;
+                document.getElementById('alertsCount').textContent = data.stats.pending_validation;
+
+                // Top Performers
+                const topPerformersHTML = data.topPerformers.map((user, index) => `
+                    <div class="flex justify-between items-center py-3 border-b border-gray-700 last:border-b-0">
+                        <div class="flex items-center">
+                            <span class="text-2xl mr-3">${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤'}</span>
+                            <span class="font-medium">${user.first_name} ${user.last_name}</span>
+                        </div>
+                        <span class="text-kolect-primary font-bold">${user.total_signatures || 0}</span>
+                    </div>
+                `).join('');
+                document.getElementById('topPerformers').innerHTML = topPerformersHTML;
+
+                // Recent Activity
+                const recentActivityHTML = data.recentActivity.map(scan => `
+                    <div class="flex justify-between items-center py-2 text-sm border-b border-gray-700 last:border-b-0">
+                        <span>${scan.first_name} ${scan.last_name}</span>
+                        <span class="text-kolect-primary font-medium">${scan.signatures} signatures</span>
+                        <span class="text-gray-400">${new Date(scan.created_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</span>
+                    </div>
+                `).join('');
+                document.getElementById('recentActivity').innerHTML = recentActivityHTML;
+
+                // Alerts and Actions
+                const alertsHTML = `
+                    <div class="bg-yellow-900 bg-opacity-50 p-4 rounded-lg border border-yellow-600">
+                        <h4 class="font-bold text-yellow-400 mb-2">⏳ ${data.stats.pending_validation} Scans en attente</h4>
+                        <p class="text-sm text-gray-300 mb-3">Des scans nécessitent votre validation</p>
+                        <button onclick="admin.showPage('validation')" class="bg-yellow-600 text-black px-4 py-2 rounded font-medium hover:bg-yellow-500">
+                            Valider maintenant
+                        </button>
+                    </div>
+                    <div class="bg-blue-900 bg-opacity-50 p-4 rounded-lg border border-blue-600">
+                        <h4 class="font-bold text-blue-400 mb-2">👥 ${data.stats.active_collaborators} Collaborateurs</h4>
+                        <p class="text-sm text-gray-300 mb-3">Gérer les comptes utilisateurs</p>
+                        <button onclick="admin.showPage('collaborators')" class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-500">
+                            Gérer les comptes
+                        </button>
+                    </div>
+                    <div class="bg-green-900 bg-opacity-50 p-4 rounded-lg border border-green-600">
+                        <h4 class="font-bold text-green-400 mb-2">📊 Analytics</h4>
+                        <p class="text-sm text-gray-300 mb-3">Rapports et statistiques avancées</p>
+                        <button onclick="admin.showPage('analytics')" class="bg-green-600 text-white px-4 py-2 rounded font-medium hover:bg-green-500">
+                            Voir les rapports
+                        </button>
+                    </div>
+                `;
+                document.getElementById('alertsAndActions').innerHTML = alertsHTML;
+            }
+
+            showPage(page) {
+                // Hide all content
+                document.getElementById('dashboardContent').style.display = page === 'dashboard' ? 'block' : 'none';
+                document.getElementById('collaboratorsContent').style.display = page === 'collaborators' ? 'block' : 'none';
+                document.getElementById('validationContent').style.display = page === 'validation' ? 'block' : 'none';
+
+                // Update sidebar
+                document.querySelectorAll('.sidebar-item').forEach(item => {
+                    item.classList.remove('active', 'text-kolect-primary');
+                    item.classList.add('text-gray-300');
+                });
+                document.querySelector(`a[href="#${page}"]`).classList.add('active', 'text-kolect-primary');
+
+                // Update page title
+                const titles = {
+                    dashboard: '📊 Dashboard Général',
+                    collaborators: '👥 Gestion Collaborateurs',
+                    validation: '🔍 Validation Scans',
+                    analytics: '📈 Analytics',
+                    settings: '⚙️ Paramètres'
+                };
+                document.getElementById('pageTitle').textContent = titles[page] || titles.dashboard;
+
+                this.currentPage = page;
+
+                // Load page-specific content
+                if (page === 'collaborators') {
+                    this.loadCollaborators();
+                } else if (page === 'validation') {
+                    this.loadValidationQueue();
+                }
+            }
+
+            loadCollaborators() {
+                // Mock data for demo
+                const mockCollaborators = [
+                    {
+                        id: 1,
+                        first_name: 'Marie',
+                        last_name: 'Dubois',
+                        email: 'marie.dubois@email.com',
+                        status: 'active',
+                        total_scans: 145,
+                        total_signatures: 347,
+                        avg_quality: 92,
+                        last_scan: '2025-06-20T15:30:00Z'
+                    },
+                    {
+                        id: 2,
+                        first_name: 'Jean',
+                        last_name: 'Laurent',
+                        email: 'jean.laurent@email.com',
+                        status: 'active',
+                        total_scans: 120,
+                        total_signatures: 298,
+                        avg_quality: 88,
+                        last_scan: '2025-06-20T14:20:00Z'
+                    },
+                    // Add more mock data as needed
+                ];
+
+                const tableHTML = mockCollaborators.map(user => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-800">
+                        <td class="px-6 py-4">
+                            <div>
+                                <div class="font-medium">${user.first_name} ${user.last_name}</div>
+                                <div class="text-sm text-gray-400">${user.email}</div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-sm">
+                                <div>${user.total_signatures || 0} signatures</div>
+                                <div class="text-gray-400">${user.total_scans || 0} scans • ${user.avg_quality || 0}% qualité</div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-400">
+                            ${user.last_scan ? new Date(user.last_scan).toLocaleDateString('fr-FR') : 'Jamais'}
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 rounded-full text-xs ${
+                                user.status === 'active' ? 'bg-green-900 text-green-300' :
+                                user.status === 'suspended' ? 'bg-red-900 text-red-300' :
+                                'bg-gray-900 text-gray-300'
+                            }">
+                                ${user.status === 'active' ? '✅ Actif' : user.status === 'suspended' ? '⛔ Suspendu' : '⚫ Inactif'}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex space-x-2">
+                                <button onclick="admin.editCollaborator(${user.id})" 
+                                        class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
+                                    ✏️ Éditer
+                                </button>
+                                ${user.status === 'active' ? 
+                                    `<button onclick="admin.suspendCollaborator(${user.id})"
+                                             class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">
+                                        ⛔ Suspendre
+                                     </button>` :
+                                    `<button onclick="admin.activateCollaborator(${user.id})"
+                                             class="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700">
+                                        ✅ Activer
+                                     </button>`
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('collaboratorsTable').innerHTML = tableHTML;
+            }
+
+            loadValidationQueue() {
+                // Mock pending scans
+                const mockPendingScans = [
+                    {
+                        id: 1,
+                        signatures: 28,
+                        quality: 65,
+                        first_name: 'Paul',
+                        last_name: 'Martin',
+                        initiative_name: 'Initiative Forêt',
+                        created_at: '2025-06-20T15:00:00Z',
+                        reason: 'Trop de signatures (>25)'
+                    },
+                    {
+                        id: 2,
+                        signatures: 2,
+                        quality: 45,
+                        first_name: 'Sophie',
+                        last_name: 'Bernard',
+                        initiative_name: 'Initiative Commune',
+                        created_at: '2025-06-20T14:30:00Z',
+                        reason: 'Qualité faible + peu de signatures'
+                    }
+                ];
+
+                const pendingHTML = mockPendingScans.map(scan => `
+                    <div class="glassmorphism p-6 rounded-xl">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="font-bold text-lg">${scan.first_name} ${scan.last_name}</h4>
+                                <p class="text-gray-400 text-sm">${scan.initiative_name}</p>
+                            </div>
+                            <span class="px-3 py-1 bg-yellow-900 text-yellow-300 rounded-full text-xs">
+                                ⚠️ En attente
+                            </span>
+                        </div>
+                        
+                        <div class="space-y-2 mb-4">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Signatures:</span>
+                                <span class="font-medium ${scan.signatures > 25 ? 'text-red-400' : scan.signatures < 3 ? 'text-yellow-400' : 'text-green-400'}">
+                                    ${scan.signatures}
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Qualité:</span>
+                                <span class="font-medium ${scan.quality < 70 ? 'text-red-400' : 'text-green-400'}">
+                                    ${scan.quality}%
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Date:</span>
+                                <span class="text-sm">${new Date(scan.created_at).toLocaleString('fr-FR')}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-yellow-900 bg-opacity-30 p-3 rounded mb-4">
+                            <p class="text-yellow-300 text-sm">⚠️ ${scan.reason}</p>
+                        </div>
+                        
+                        <div class="flex space-x-2">
+                            <button onclick="admin.validateScan(${scan.id}, 'approve')" 
+                                    class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700">
+                                ✅ Approuver
+                            </button>
+                            <button onclick="admin.validateScan(${scan.id}, 'correct')" 
+                                    class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                                ✏️ Corriger
+                            </button>
+                            <button onclick="admin.validateScan(${scan.id}, 'reject')" 
+                                    class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
+                                ❌ Rejeter
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                document.getElementById('pendingScansGrid').innerHTML = pendingHTML;
+            }
+
+            validateScan(scanId, action) {
+                // Mock validation
+                const actionText = {
+                    approve: 'approuvé',
+                    correct: 'marqué pour correction',
+                    reject: 'rejeté'
+                };
+                
+                alert(`Scan ${scanId} ${actionText[action]} avec succès !`);
+                
+                // Reload validation queue
+                this.loadValidationQueue();
+            }
+
+            editCollaborator(userId) {
+                alert(`Édition du collaborateur ${userId} (fonctionnalité à implémenter)`);
+            }
+
+            suspendCollaborator(userId) {
+                if (confirm('Êtes-vous sûr de vouloir suspendre ce collaborateur ?')) {
+                    alert(`Collaborateur ${userId} suspendu !`);
+                    this.loadCollaborators();
+                }
+            }
+
+            activateCollaborator(userId) {
+                alert(`Collaborateur ${userId} activé !`);
+                this.loadCollaborators();
+            }
+
+            setupEventListeners() {
+                // Login form
+                document.getElementById('loginForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const email = document.getElementById('loginEmail').value;
+                    const password = document.getElementById('loginPassword').value;
+                    await this.login(email, password);
+                });
+
+                // Logout
+                document.getElementById('logoutBtn').addEventListener('click', () => {
+                    this.logout();
+                });
+
+                // Sidebar navigation
+                document.querySelectorAll('.sidebar-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const page = item.getAttribute('href').substring(1);
+                        this.showPage(page);
+                    });
+                });
+
+                // Search and filters
+                document.getElementById('searchCollaborators')?.addEventListener('input', (e) => {
+                    // Implement search functionality
+                });
+
+                document.getElementById('filterStatus')?.addEventListener('change', (e) => {
+                    // Implement filter functionality
+                });
+            }
+        }
+
+        // Initialize admin interface
+        const admin = new KolectAdmin();
+    </script>
+</body>
+</html>
