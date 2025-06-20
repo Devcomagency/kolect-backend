@@ -32,6 +32,430 @@ app.use('/api/collaborators', collaboratorsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/admin', adminRoutes);
 
+// === 🔍 ENDPOINTS AUDIT BASE DE DONNÉES ===
+
+// Endpoint 1: Audit complet de la base de données
+app.get('/api/debug/database-structure', async (req, res) => {
+  try {
+    console.log('🔍 === AUDIT COMPLET BASE DE DONNÉES ===');
+    
+    // 1. Lister toutes les tables
+    const tables = await db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      ORDER BY table_name
+    `);
+    
+    console.log('📊 Tables trouvées:', tables.rows.map(t => t.table_name));
+    
+    const structure = {
+      audit_date: new Date().toISOString(),
+      tables_found: tables.rows.map(t => t.table_name),
+      table_details: {}
+    };
+    
+    // 2. Pour chaque table, lister les colonnes
+    for (let table of tables.rows) {
+      const columns = await db.query(`
+        SELECT 
+          column_name, 
+          data_type, 
+          is_nullable, 
+          column_default,
+          character_maximum_length,
+          CASE WHEN column_name IN (
+            SELECT column_name 
+            FROM information_schema.key_column_usage kcu
+            JOIN information_schema.table_constraints tc 
+              ON kcu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'PRIMARY KEY' 
+              AND kcu.table_name = $1
+          ) THEN 'PRIMARY KEY' ELSE '' END as key_type
+        FROM information_schema.columns 
+        WHERE table_name = $1 
+        ORDER BY ordinal_position
+      `, [table.table_name]);
+      
+      structure.table_details[table.table_name] = columns.rows;
+      console.log(`📋 Table ${table.table_name}: ${columns.rows.length} colonnes`);
+      
+      // Log des colonnes importantes
+      columns.rows.forEach(col => {
+        if (col.key_type === 'PRIMARY KEY') {
+          console.log(`  🔑 ${col.column_name} (${col.data_type}) - PRIMARY KEY`);
+        } else {
+          console.log(`  📝 ${col.column_name} (${col.data_type})`);
+        }
+      });
+    }
+    
+    // 3. Vérifier les données existantes
+    const dataCounts = {};
+    for (let table of tables.rows) {
+      try {
+        const count = await db.query(`SELECT COUNT(*) as count FROM "${table.table_name}"`);
+        dataCounts[table.table_name] = parseInt(count.rows[0].count);
+        console.log(`📊 ${table.table_name}: ${count.rows[0].count} lignes`);
+      } catch (err) {
+        dataCounts[table.table_name] = `Erreur: ${err.message}`;
+        console.log(`❌ ${table.table_name}: Erreur - ${err.message}`);
+      }
+    }
+    
+    structure.data_counts = dataCounts;
+    structure.total_tables = tables.rows.length;
+    
+    console.log('✅ Audit terminé avec succès');
+    
+    res.json({
+      success: true,
+      database_structure: structure
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur audit base:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Endpoint 2: Vérifier colonnes spécifiques manquantes
+app.get('/api/debug/missing-columns', async (req, res) => {
+  try {
+    console.log('🔍 === VÉRIFICATION COLONNES MANQUANTES ===');
+    
+    const requiredColumns = {
+      scans: [
+        'initiative_id',
+        'signatures',
+        'quality',
+        'confidence',
+        'signatures_validated',
+        'signatures_rejected',
+        'signatures_pending',
+        'scan_number',
+        'validation_status',
+        'photo_urls',
+        'batch_reference',
+        'location_latitude',
+        'location_longitude'
+      ],
+      collaborators: [
+        'first_name',
+        'last_name',
+        'phone',
+        'address',
+        'city',
+        'postal_code',
+        'age',
+        'birth_date',
+        'national_id',
+        'emergency_contact_name',
+        'hire_date'
+      ],
+      initiatives: [
+        'name',
+        'description',
+        'deadline',
+        'target_signatures',
+        'current_signatures',
+        'price_per_signature',
+        'status',
+        'color'
+      ]
+    };
+    
+    const analysis = {};
+    
+    for (let [tableName, columns] of Object.entries(requiredColumns)) {
+      analysis[tableName] = {
+        exists: [],
+        missing: [],
+        table_exists: false,
+        total_required: columns.length
+      };
+      
+      // Vérifier si la table existe
+      const tableExists = await db.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = $1
+      `, [tableName]);
+      
+      analysis[tableName].table_exists = tableExists.rows.length > 0;
+      
+      if (analysis[tableName].table_exists) {
+        console.log(`📋 Vérification table ${tableName}...`);
+        
+        for (let column of columns) {
+          const exists = await db.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = $1 AND column_name = $2
+          `, [tableName, column]);
+          
+          if (exists.rows.length > 0) {
+            analysis[tableName].exists.push(column);
+            console.log(`  ✅ ${column} existe`);
+          } else {
+            analysis[tableName].missing.push(column);
+            console.log(`  ❌ ${column} manquant`);
+          }
+        }
+        
+        analysis[tableName].completion_percent = Math.round(
+          (analysis[tableName].exists.length / columns.length) * 100
+        );
+      } else {
+        console.log(`❌ Table ${tableName} n'existe pas`);
+        analysis[tableName].missing = columns;
+        analysis[tableName].completion_percent = 0;
+      }
+    }
+    
+    console.log('✅ Vérification colonnes terminée');
+    
+    res.json({
+      success: true,
+      column_analysis: analysis,
+      summary: {
+        total_tables_checked: Object.keys(requiredColumns).length,
+        tables_missing: Object.values(analysis).filter(t => !t.table_exists).length,
+        columns_missing_total: Object.values(analysis).reduce((sum, t) => sum + t.missing.length, 0)
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur vérification colonnes:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Endpoint 3: Analyse détaillée table scans
+app.get('/api/debug/scans-table', async (req, res) => {
+  try {
+    console.log('🔍 === ANALYSE DÉTAILLÉE TABLE SCANS ===');
+    
+    // Vérifier si la table scans existe
+    const tableExists = await db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' AND table_name = 'scans'
+    `);
+    
+    if (tableExists.rows.length === 0) {
+      return res.json({
+        success: true,
+        table_exists: false,
+        message: 'La table scans n\'existe pas encore'
+      });
+    }
+    
+    // Structure complète de la table scans
+    const scanStructure = await db.query(`
+      SELECT 
+        column_name, 
+        data_type, 
+        is_nullable, 
+        column_default,
+        character_maximum_length
+      FROM information_schema.columns 
+      WHERE table_name = 'scans' 
+      ORDER BY ordinal_position
+    `);
+    
+    console.log(`📋 Table scans: ${scanStructure.rows.length} colonnes trouvées`);
+    
+    // Contraintes et index
+    const constraints = await db.query(`
+      SELECT 
+        tc.constraint_name,
+        tc.constraint_type,
+        kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu 
+        ON tc.constraint_name = kcu.constraint_name
+      WHERE tc.table_name = 'scans'
+    `);
+    
+    // Quelques données exemple si elles existent
+    let sampleData = null;
+    let totalRows = 0;
+    
+    try {
+      const count = await db.query('SELECT COUNT(*) as count FROM scans');
+      totalRows = parseInt(count.rows[0].count);
+      
+      if (totalRows > 0) {
+        const sample = await db.query('SELECT * FROM scans LIMIT 3');
+        sampleData = sample.rows;
+        console.log(`📊 ${totalRows} lignes dans la table scans`);
+      } else {
+        console.log('📊 Table scans vide');
+      }
+    } catch (err) {
+      console.log('❌ Erreur lecture données scans:', err.message);
+      sampleData = `Erreur: ${err.message}`;
+    }
+    
+    console.log('✅ Analyse scans terminée');
+    
+    res.json({
+      success: true,
+      table_exists: true,
+      table_structure: scanStructure.rows,
+      constraints: constraints.rows,
+      sample_data: sampleData,
+      total_columns: scanStructure.rows.length,
+      total_rows: totalRows,
+      analysis_date: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur analyse scans:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Endpoint 4: Créer/Corriger la structure complète
+app.post('/api/debug/fix-database', async (req, res) => {
+  try {
+    console.log('🔧 === CORRECTION STRUCTURE BASE DE DONNÉES ===');
+    
+    const results = {
+      tables_created: [],
+      columns_added: [],
+      errors: []
+    };
+    
+    // 1. Corriger table collaborators
+    const collaboratorColumns = [
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS first_name VARCHAR(50)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS last_name VARCHAR(50)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS phone VARCHAR(20)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS address TEXT',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS city VARCHAR(100)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS postal_code VARCHAR(10)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS age INTEGER',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS birth_date DATE',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS hire_date DATE DEFAULT CURRENT_DATE',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS national_id VARCHAR(50)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(100)',
+      'ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(20)'
+    ];
+    
+    for (let sql of collaboratorColumns) {
+      try {
+        await db.query(sql);
+        const columnName = sql.match(/ADD COLUMN IF NOT EXISTS (\w+)/)[1];
+        results.columns_added.push(`collaborators.${columnName}`);
+        console.log(`✅ Ajouté: collaborators.${columnName}`);
+      } catch (err) {
+        results.errors.push(`Erreur collaborators: ${err.message}`);
+      }
+    }
+    
+    // 2. Créer table initiatives
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS initiatives (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          description TEXT,
+          deadline DATE,
+          target_signatures INTEGER DEFAULT 0,
+          current_signatures INTEGER DEFAULT 0,
+          price_per_signature DECIMAL(5,2) DEFAULT 0.50,
+          status VARCHAR(20) DEFAULT 'active',
+          color VARCHAR(7) DEFAULT '#4ECDC4',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      results.tables_created.push('initiatives');
+      console.log('✅ Table initiatives créée');
+    } catch (err) {
+      results.errors.push(`Erreur création initiatives: ${err.message}`);
+    }
+    
+    // 3. Corriger table scans
+    const scanColumns = [
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS initiative_id INTEGER',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures_validated INTEGER DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures_rejected INTEGER DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures_pending INTEGER DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS quality INTEGER DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS confidence INTEGER DEFAULT 0',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_number VARCHAR(50) UNIQUE',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS validation_status VARCHAR(20) DEFAULT \'unverified\'',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT \'pending\'',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS photo_urls TEXT[]',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS batch_reference VARCHAR(50)',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS location_latitude DECIMAL(10, 8)',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS location_longitude DECIMAL(11, 8)',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS collector_notes TEXT',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS validator_notes TEXT',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS validated_by INTEGER',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    ];
+    
+    for (let sql of scanColumns) {
+      try {
+        await db.query(sql);
+        const columnName = sql.match(/ADD COLUMN IF NOT EXISTS (\w+)/)[1];
+        results.columns_added.push(`scans.${columnName}`);
+        console.log(`✅ Ajouté: scans.${columnName}`);
+      } catch (err) {
+        results.errors.push(`Erreur scans: ${err.message}`);
+      }
+    }
+    
+    // 4. Insérer initiatives par défaut
+    try {
+      await db.query(`
+        INSERT INTO initiatives (id, name, description, deadline, target_signatures, price_per_signature, color) 
+        VALUES 
+          (1, 'Forêt', 'Initiative pour la protection des forêts', '2026-03-10', 10000, 0.75, '#4ECDC4'),
+          (2, 'Commune', 'Initiative pour le développement communal', '2025-12-31', 5000, 0.50, '#35A085'),
+          (3, 'Frontière', 'Initiative protection des frontières', '2025-09-15', 7500, 0.60, '#44B9A6')
+        ON CONFLICT (id) DO NOTHING
+      `);
+      console.log('✅ Initiatives par défaut insérées');
+    } catch (err) {
+      results.errors.push(`Erreur initiatives données: ${err.message}`);
+    }
+    
+    console.log('✅ Correction base de données terminée');
+    
+    res.json({
+      success: true,
+      message: 'Structure base de données corrigée',
+      results: results,
+      fixed_date: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur correction base:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // === GPT-4 VISION ANALYSIS ENDPOINT ===
 app.post('/api/analyze-signatures', async (req, res) => {
   try {
@@ -165,6 +589,65 @@ app.post('/api/upload-scan', async (req, res) => {
   }
 });
 
+// === 🔍 AUDIT RAPIDE ===
+app.get('/api/test-structure', async (req, res) => {
+  try {
+    console.log('🔍 === AUDIT RAPIDE STRUCTURE DB ===');
+    
+    const tables = await db.query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'public' ORDER BY table_name
+    `);
+    
+    console.log('📊 Tables trouvées:', tables.rows.map(t => t.table_name));
+    
+    const structure = {};
+    for (let table of tables.rows) {
+      const columns = await db.query(`
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns 
+        WHERE table_name = $1 ORDER BY ordinal_position
+      `, [table.table_name]);
+      
+      structure[table.table_name] = columns.rows;
+      console.log(`📋 ${table.table_name}: ${columns.rows.length} colonnes`);
+    }
+    
+    // Vérifier spécifiquement les colonnes importantes
+    const criticalColumns = {
+      scans: ['initiative_id', 'signatures', 'quality', 'confidence'],
+      collaborators: ['first_name', 'last_name', 'phone', 'address']
+    };
+    
+    const missing = {};
+    for (let [tableName, cols] of Object.entries(criticalColumns)) {
+      if (structure[tableName]) {
+        const existingCols = structure[tableName].map(c => c.column_name);
+        missing[tableName] = cols.filter(col => !existingCols.includes(col));
+      } else {
+        missing[tableName] = ['TABLE_NOT_EXISTS'];
+      }
+    }
+    
+    console.log('✅ Audit rapide terminé');
+    
+    res.json({
+      success: true,
+      audit_date: new Date().toISOString(),
+      tables_found: tables.rows.map(t => t.table_name),
+      structure,
+      critical_missing: missing
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur audit rapide:', error);
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // === HEALTH CHECK ===
 app.get('/api/health', (req, res) => {
   res.json({
@@ -182,7 +665,13 @@ app.get('/api/health', (req, res) => {
       'POST /api/analyze-signatures',
       'POST /api/upload-scan',
       'GET /api/email/test',
-      'POST /api/email/send-contract'
+      'POST /api/email/send-contract',
+      // 🆕 Nouveaux endpoints debug
+      'GET /api/debug/database-structure',
+      'GET /api/debug/missing-columns',
+      'GET /api/debug/scans-table',
+      'POST /api/debug/fix-database',
+      'GET /api/test-structure' // 🚀 AUDIT RAPIDE
     ]
   });
 });
@@ -212,6 +701,7 @@ app.get("/api/migrate-db", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur Kolect démarré sur le port ${PORT}`);
   console.log(`🌐 Interface test: http://localhost:${PORT}/test.html`);
@@ -219,6 +709,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('📧 Routes email disponibles:');
   console.log('   GET  /api/email/test');
   console.log('   POST /api/email/send-contract');
+  console.log('🔍 Routes debug disponibles:');
+  console.log('   GET  /api/debug/database-structure');
+  console.log('   GET  /api/debug/missing-columns');
+  console.log('   GET  /api/debug/scans-table');
+  console.log('   POST /api/debug/fix-database');
 });
 
 module.exports = app;

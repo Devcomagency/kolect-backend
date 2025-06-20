@@ -1,0 +1,24 @@
+// ✅ ENDPOINT MIGRATION COMPLÈTE
+app.get("/api/migrate-db", async (req, res) => {
+  try {
+    console.log("🔧 Migration complète...");
+    
+    // Ajouter toutes les colonnes manquantes
+    try { await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS contract_signed BOOLEAN DEFAULT FALSE`); } catch(e) {}
+    try { await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`); } catch(e) {}
+    try { await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`); } catch(e) {}
+    try { await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`); } catch(e) {}
+    try { await db.query(`ALTER TABLE collaborators ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`); } catch(e) {}
+    
+    // Mettre à jour les données
+    await db.query(`UPDATE collaborators SET contract_signed = FALSE WHERE contract_signed IS NULL`);
+    await db.query(`UPDATE collaborators SET status = 'active' WHERE status IS NULL`);
+    await db.query(`UPDATE collaborators SET is_active = TRUE WHERE is_active IS NULL`);
+    
+    console.log("✅ Migration complète OK");
+    res.json({ success: true, message: "Migration complète réussie" });
+  } catch (error) {
+    console.error("❌ Erreur:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
