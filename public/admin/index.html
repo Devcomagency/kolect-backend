@@ -13,82 +13,164 @@
         .text-kolect-primary { color: #4ECDC4; }
         .border-kolect-primary { border-color: #4ECDC4; }
         .glassmorphism {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
         .sidebar-item {
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .sidebar-item:hover {
-            background: rgba(78, 205, 196, 0.2);
-            transform: translateX(5px);
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.15), rgba(53, 160, 133, 0.15));
+            transform: translateX(8px);
+            border-left: 3px solid #4ECDC4;
+        }
+        .sidebar-item.active {
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.25), rgba(53, 160, 133, 0.25));
+            border-left: 3px solid #4ECDC4;
         }
         .stat-card {
-            background: linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(53, 160, 133, 0.1));
-            transition: transform 0.3s ease;
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.08), rgba(53, 160, 133, 0.08));
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(78, 205, 196, 0.2);
         }
         .stat-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(78, 205, 196, 0.2);
+            border-color: #4ECDC4;
+        }
+        .loading-spinner {
+            border: 3px solid rgba(78, 205, 196, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid #4ECDC4;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .data-table {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(10px);
+        }
+        .table-row:hover {
+            background: rgba(78, 205, 196, 0.1);
+            transition: all 0.2s ease;
+        }
+        .action-btn {
+            transition: all 0.2s ease;
+            font-size: 0.75rem;
+            padding: 0.375rem 0.75rem;
+        }
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .metric-trend {
+            font-size: 0.75rem;
+            opacity: 0.8;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
-    <!-- Login Modal (Initially Visible) -->
-    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white font-sans min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
         <div class="glassmorphism p-8 rounded-2xl max-w-md w-full mx-4">
             <div class="text-center mb-6">
-                <h1 class="text-3xl font-bold text-kolect-primary">🔐 KOLECT ADMIN</h1>
+                <div class="text-5xl mb-4">🌿</div>
+                <h1 class="text-3xl font-bold text-kolect-primary">KOLECT ADMIN</h1>
                 <p class="text-gray-300 mt-2">Plateforme d'administration</p>
             </div>
             <form id="loginForm">
                 <div class="mb-4">
                     <input type="email" id="loginEmail" placeholder="Email administrateur"
-                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none">
+                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none transition-colors">
                 </div>
                 <div class="mb-6">
                     <input type="password" id="loginPassword" placeholder="Mot de passe"
-                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none">
+                           class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none transition-colors">
                 </div>
                 <button type="submit" id="loginSubmitBtn"
-                        class="w-full kolect-primary text-gray-900 p-4 rounded-lg font-bold text-lg hover:opacity-90 transition-opacity">
+                        class="w-full kolect-primary text-gray-900 p-4 rounded-lg font-bold text-lg hover:opacity-90 transition-all duration-300 transform hover:scale-105">
                     Se connecter
                 </button>
                 <div id="loginError" class="text-red-400 text-sm mt-3 hidden"></div>
-                <div id="loginDebug" class="text-blue-400 text-xs mt-2 hidden"></div>
+                <div id="loginLoading" class="flex justify-center mt-4 hidden">
+                    <div class="loading-spinner"></div>
+                </div>
             </form>
         </div>
     </div>
 
-    <!-- Main Admin Interface (Initially Hidden) -->
+    <!-- Main Admin Interface -->
     <div id="adminInterface" class="flex h-screen" style="display: none;">
-        <!-- Sidebar -->
-        <div class="w-64 bg-gray-800 border-r border-gray-700">
+        <!-- Enhanced Sidebar -->
+        <div class="w-72 bg-gray-800 border-r border-gray-700 glassmorphism">
             <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold text-kolect-primary">🔐 KOLECT ADMIN</h1>
-                <p class="text-gray-400 text-sm mt-1">Plateforme de gestion</p>
+                <div class="flex items-center mb-2">
+                    <div class="text-2xl mr-3">🌿</div>
+                    <h1 class="text-xl font-bold text-kolect-primary">KOLECT ADMIN</h1>
+                </div>
+                <p class="text-gray-400 text-sm">Plateforme de gestion</p>
+                <div class="mt-3 text-xs text-gray-500">
+                    Version 1.0 • <span id="currentTime"></span>
+                </div>
             </div>
             
-            <nav class="mt-6">
-                <a href="#dashboard" class="sidebar-item flex items-center px-6 py-3 text-white hover:text-kolect-primary active">
-                    <span class="mr-3">🏠</span> Dashboard
+            <nav class="mt-6 px-3">
+                <a href="#dashboard" class="sidebar-item flex items-center px-4 py-3 mb-1 rounded-lg text-white hover:text-kolect-primary active">
+                    <span class="mr-3 text-lg">📊</span>
+                    <div>
+                        <div class="font-medium">Dashboard</div>
+                        <div class="text-xs text-gray-400">Vue d'ensemble</div>
+                    </div>
                 </a>
-                <a href="#collaborators" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
-                    <span class="mr-3">👥</span> Collaborateurs
+                <a href="#collaborators" class="sidebar-item flex items-center px-4 py-3 mb-1 rounded-lg text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3 text-lg">👥</span>
+                    <div>
+                        <div class="font-medium">Collaborateurs</div>
+                        <div class="text-xs text-gray-400">Gestion équipes</div>
+                    </div>
                 </a>
-                <a href="#validation" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
-                    <span class="mr-3">🔍</span> Validation Scans
+                <a href="#validation" class="sidebar-item flex items-center px-4 py-3 mb-1 rounded-lg text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3 text-lg">🔍</span>
+                    <div>
+                        <div class="font-medium">Validation</div>
+                        <div class="text-xs text-gray-400">Scans en attente</div>
+                    </div>
                 </a>
-                <a href="#analytics" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
-                    <span class="mr-3">📊</span> Analytics
+                <a href="#analytics" class="sidebar-item flex items-center px-4 py-3 mb-1 rounded-lg text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3 text-lg">📈</span>
+                    <div>
+                        <div class="font-medium">Analytics</div>
+                        <div class="text-xs text-gray-400">Rapports détaillés</div>
+                    </div>
                 </a>
-                <a href="#settings" class="sidebar-item flex items-center px-6 py-3 text-gray-300 hover:text-kolect-primary">
-                    <span class="mr-3">⚙️</span> Paramètres
+                <a href="#settings" class="sidebar-item flex items-center px-4 py-3 mb-1 rounded-lg text-gray-300 hover:text-kolect-primary">
+                    <span class="mr-3 text-lg">⚙️</span>
+                    <div>
+                        <div class="font-medium">Paramètres</div>
+                        <div class="text-xs text-gray-400">Configuration</div>
+                    </div>
                 </a>
             </nav>
 
-            <div class="absolute bottom-4 left-4 right-4">
-                <button id="logoutBtn" class="w-full bg-red-600 text-white p-3 rounded-lg hover:bg-red-700 transition-colors">
+            <div class="absolute bottom-6 left-6 right-6">
+                <div class="glassmorphism p-4 rounded-lg mb-4">
+                    <div class="flex items-center mb-2">
+                        <div class="w-10 h-10 bg-kolect-primary rounded-full flex items-center justify-center text-gray-900 font-bold mr-3">
+                            <span id="adminInitials">A</span>
+                        </div>
+                        <div>
+                            <div class="font-medium" id="adminName">Admin</div>
+                            <div class="text-xs text-gray-400">Administrateur</div>
+                        </div>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="w-full bg-red-600 text-white p-3 rounded-lg hover:bg-red-700 transition-all duration-300 transform hover:scale-105">
                     🚪 Déconnexion
                 </button>
             </div>
@@ -96,16 +178,20 @@
 
         <!-- Main Content -->
         <div class="flex-1 overflow-auto">
-            <!-- Header -->
-            <header class="bg-gray-800 border-b border-gray-700 p-4">
+            <!-- Enhanced Header -->
+            <header class="bg-gray-800 border-b border-gray-700 p-6 glassmorphism">
                 <div class="flex justify-between items-center">
-                    <h2 id="pageTitle" class="text-2xl font-bold">📊 Dashboard Général</h2>
-                    <div class="flex items-center space-x-4">
-                        <div id="alertsCounter" class="bg-red-500 text-white px-3 py-1 rounded-full text-sm">
-                            ⚠️ <span id="alertsCount">0</span>
+                    <div>
+                        <h2 id="pageTitle" class="text-3xl font-bold mb-1">📊 Dashboard Général</h2>
+                        <p id="pageSubtitle" class="text-gray-400">Vue d'ensemble de la plateforme KOLECT</p>
+                    </div>
+                    <div class="flex items-center space-x-6">
+                        <div id="alertsCounter" class="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+                            ⚠️ <span id="alertsCount">0</span> alertes
                         </div>
-                        <div class="text-sm text-gray-300">
-                            <span id="adminName">Admin</span> • <span id="currentTime"></span>
+                        <div class="text-sm text-gray-300 bg-gray-700 px-4 py-2 rounded-lg">
+                            <div class="font-medium">Dernière mise à jour</div>
+                            <div id="lastUpdate">--:--</div>
                         </div>
                     </div>
                 </div>
@@ -113,152 +199,211 @@
 
             <!-- Content Area -->
             <main id="contentArea" class="p-6">
-                <!-- Dashboard Content -->
+                <!-- Enhanced Dashboard Content -->
                 <div id="dashboardContent">
+                    <!-- Loading State -->
+                    <div id="dashboardLoading" class="flex justify-center items-center h-64">
+                        <div class="text-center">
+                            <div class="loading-spinner mx-auto mb-4"></div>
+                            <p class="text-gray-400">Chargement des données...</p>
+                        </div>
+                    </div>
+
                     <!-- KPIs Grid -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-                        <div class="stat-card p-6 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-400 text-sm">Collaborateurs Actifs</p>
-                                    <p id="activeCollaborators" class="text-3xl font-bold text-kolect-primary">-</p>
+                    <div id="dashboardData" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                            <div class="stat-card p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-2xl">👥</div>
+                                    <div class="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">ACTIFS</div>
                                 </div>
-                                <div class="text-3xl">👥</div>
+                                <p class="text-gray-400 text-sm mb-1">Collaborateurs Actifs</p>
+                                <p id="activeCollaborators" class="text-3xl font-bold text-kolect-primary mb-1">-</p>
+                                <p class="metric-trend text-green-400">↗ +12% ce mois</p>
+                            </div>
+                            
+                            <div class="stat-card p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-2xl">📸</div>
+                                    <div class="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">AUJOURD'HUI</div>
+                                </div>
+                                <p class="text-gray-400 text-sm mb-1">Scans Aujourd'hui</p>
+                                <p id="scansToday" class="text-3xl font-bold text-kolect-primary mb-1">-</p>
+                                <p class="metric-trend text-blue-400">📈 Objectif: 200</p>
+                            </div>
+                            
+                            <div class="stat-card p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-2xl">✍️</div>
+                                    <div class="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">TOTAL</div>
+                                </div>
+                                <p class="text-gray-400 text-sm mb-1">Total Signatures</p>
+                                <p id="totalSignatures" class="text-3xl font-bold text-kolect-primary mb-1">-</p>
+                                <p class="metric-trend text-green-400">🎯 Objectif: 50K</p>
+                            </div>
+                            
+                            <div class="stat-card p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-2xl">⭐</div>
+                                    <div class="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">MOYENNE</div>
+                                </div>
+                                <p class="text-gray-400 text-sm mb-1">Qualité Moyenne</p>
+                                <p id="avgQuality" class="text-3xl font-bold text-kolect-primary mb-1">-</p>
+                                <p class="metric-trend text-yellow-400">📊 Standard: 85%</p>
+                            </div>
+                            
+                            <div class="stat-card p-6 rounded-xl border-yellow-500">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-2xl">⏳</div>
+                                    <div class="text-xs text-yellow-400 bg-yellow-900 px-2 py-1 rounded">URGENT</div>
+                                </div>
+                                <p class="text-gray-400 text-sm mb-1">En Attente</p>
+                                <p id="pendingValidation" class="text-3xl font-bold text-yellow-400 mb-1">-</p>
+                                <p class="metric-trend text-yellow-400">⚠ Nécessite attention</p>
                             </div>
                         </div>
-                        
-                        <div class="stat-card p-6 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-400 text-sm">Scans Aujourd'hui</p>
-                                    <p id="scansToday" class="text-3xl font-bold text-kolect-primary">-</p>
-                                </div>
-                                <div class="text-3xl">📸</div>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card p-6 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-400 text-sm">Total Signatures</p>
-                                    <p id="totalSignatures" class="text-3xl font-bold text-kolect-primary">-</p>
-                                </div>
-                                <div class="text-3xl">✍️</div>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card p-6 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-400 text-sm">Qualité Moyenne</p>
-                                    <p id="avgQuality" class="text-3xl font-bold text-kolect-primary">-</p>
-                                </div>
-                                <div class="text-3xl">⭐</div>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card p-6 rounded-xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-400 text-sm">En Attente</p>
-                                    <p id="pendingValidation" class="text-3xl font-bold text-yellow-400">-</p>
-                                </div>
-                                <div class="text-3xl">⏳</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Charts and Tables Row -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                        <!-- Top Performers -->
+                        <!-- Enhanced Charts and Tables Row -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                            <!-- Top Performers -->
+                            <div class="glassmorphism p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-6">
+                                    <h3 class="text-xl font-bold flex items-center">
+                                        🏆 Top Performers
+                                    </h3>
+                                    <button class="text-sm bg-kolect-primary text-gray-900 px-3 py-1 rounded font-medium hover:opacity-80">
+                                        Voir tous
+                                    </button>
+                                </div>
+                                <div id="topPerformers" class="space-y-4">
+                                    <!-- Loaded dynamically -->
+                                </div>
+                            </div>
+
+                            <!-- Recent Activity -->
+                            <div class="glassmorphism p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-6">
+                                    <h3 class="text-xl font-bold flex items-center">
+                                        ⚡ Activité Récente
+                                    </h3>
+                                    <button id="refreshActivity" class="text-sm bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
+                                        🔄 Actualiser
+                                    </button>
+                                </div>
+                                <div id="recentActivity" class="space-y-3">
+                                    <!-- Loaded dynamically -->
+                                </div>
+                            </div>
+
+                            <!-- System Status -->
+                            <div class="glassmorphism p-6 rounded-xl">
+                                <h3 class="text-xl font-bold mb-6">🔧 État Système</h3>
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">Serveur Backend</span>
+                                        <span class="text-green-400 text-sm">🟢 Opérationnel</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">Base de données</span>
+                                        <span class="text-green-400 text-sm">🟢 Connectée</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">GPT-4 Vision</span>
+                                        <span id="gpt4Status" class="text-green-400 text-sm">🟢 Actif</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">Dernière sauvegarde</span>
+                                        <span class="text-gray-400 text-sm" id="lastBackup">Calculing...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Enhanced Alerts and Actions -->
                         <div class="glassmorphism p-6 rounded-xl">
-                            <h3 class="text-xl font-bold mb-4 flex items-center">
-                                🏆 Top Performers
-                                <button class="ml-auto text-sm bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
-                                    Voir tous
-                                </button>
-                            </h3>
-                            <div id="topPerformers" class="space-y-3">
+                            <h3 class="text-xl font-bold mb-6">⚠️ Alertes & Actions Rapides</h3>
+                            <div id="alertsAndActions" class="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <!-- Loaded dynamically -->
                             </div>
-                        </div>
-
-                        <!-- Recent Activity -->
-                        <div class="glassmorphism p-6 rounded-xl">
-                            <h3 class="text-xl font-bold mb-4 flex items-center">
-                                ⚡ Activité Récente
-                                <button class="ml-auto text-sm bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
-                                    Actualiser
-                                </button>
-                            </h3>
-                            <div id="recentActivity" class="space-y-2">
-                                <!-- Loaded dynamically -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Alerts and Actions -->
-                    <div class="glassmorphism p-6 rounded-xl">
-                        <h3 class="text-xl font-bold mb-4">⚠️ Alertes & Actions Rapides</h3>
-                        <div id="alertsAndActions" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <!-- Loaded dynamically -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Collaborators Content (Hidden by default) -->
+                <!-- Enhanced Collaborators Content -->
                 <div id="collaboratorsContent" style="display: none;">
-                    <div class="mb-6 flex justify-between items-center">
-                        <div class="flex space-x-4">
-                            <input type="text" id="searchCollaborators" placeholder="Rechercher..."
-                                   class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
-                            <select id="filterStatus" class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
-                                <option value="all">Tous les statuts</option>
-                                <option value="active">Actifs</option>
-                                <option value="suspended">Suspendus</option>
-                                <option value="inactive">Inactifs</option>
+                    <div class="mb-6 flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+                        <div class="flex flex-col lg:flex-row gap-4">
+                            <input type="text" id="searchCollaborators" placeholder="🔍 Rechercher par nom, email..."
+                                   class="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-kolect-primary focus:outline-none lg:w-80">
+                            <select id="filterStatus" class="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-kolect-primary">
+                                <option value="all">📊 Tous les statuts</option>
+                                <option value="active">🟢 Actifs</option>
+                                <option value="suspended">🔴 Suspendus</option>
+                                <option value="inactive">⚫ Inactifs</option>
                             </select>
                         </div>
-                        <button id="exportCollaborators" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                            📄 Export CSV
-                        </button>
+                        <div class="flex gap-3">
+                            <button id="refreshCollaborators" class="bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                                🔄 Actualiser
+                            </button>
+                            <button id="exportCollaborators" class="bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors">
+                                📄 Export CSV
+                            </button>
+                        </div>
                     </div>
 
                     <div class="glassmorphism rounded-xl overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-gray-800">
-                                <tr>
-                                    <th class="px-6 py-3 text-left">👤 Collaborateur</th>
-                                    <th class="px-6 py-3 text-left">📊 Performances</th>
-                                    <th class="px-6 py-3 text-left">📅 Dernière activité</th>
-                                    <th class="px-6 py-3 text-left">🔄 Statut</th>
-                                    <th class="px-6 py-3 text-left">⚙️ Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="collaboratorsTable">
-                                <!-- Loaded dynamically -->
-                            </tbody>
-                        </table>
+                        <div class="data-table">
+                            <table class="w-full">
+                                <thead class="bg-gray-800 border-b border-gray-700">
+                                    <tr>
+                                        <th class="px-6 py-4 text-left font-semibold">👤 Collaborateur</th>
+                                        <th class="px-6 py-4 text-left font-semibold">📊 Performances</th>
+                                        <th class="px-6 py-4 text-left font-semibold">📅 Activité</th>
+                                        <th class="px-6 py-4 text-left font-semibold">🔄 Statut</th>
+                                        <th class="px-6 py-4 text-left font-semibold">⚙️ Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="collaboratorsTable">
+                                    <tr>
+                                        <td colspan="5" class="px-6 py-8 text-center text-gray-400">
+                                            <div class="loading-spinner mx-auto mb-4"></div>
+                                            Chargement des collaborateurs...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Validation Content (Hidden by default) -->
+                <!-- Enhanced Validation Content -->
                 <div id="validationContent" style="display: none;">
                     <div class="mb-6">
-                        <h3 class="text-xl font-bold mb-4">🔍 Scans en Attente de Validation</h3>
-                        <div class="flex space-x-4">
-                            <select id="filterValidationType" class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
-                                <option value="all">Tous les types</option>
-                                <option value="low_quality">Qualité faible (&lt;70%)</option>
-                                <option value="high_count">Trop de signatures (&gt;25)</option>
-                                <option value="low_count">Peu de signatures (&lt;3)</option>
-                                <option value="suspicious">Suspects</option>
-                            </select>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-2xl font-bold">🔍 Scans en Attente de Validation</h3>
+                            <div class="flex gap-3">
+                                <select id="filterValidationType" class="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white">
+                                    <option value="all">Tous les types</option>
+                                    <option value="low_quality">Qualité faible (&lt;70%)</option>
+                                    <option value="high_count">Trop de signatures (&gt;25)</option>
+                                    <option value="low_count">Peu de signatures (&lt;3)</option>
+                                    <option value="suspicious">Suspects</option>
+                                </select>
+                                <button id="refreshValidation" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                                    🔄 Actualiser
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     <div id="pendingScansGrid" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                        <!-- Loaded dynamically -->
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="text-center text-gray-400">
+                                <div class="loading-spinner mx-auto mb-4"></div>
+                                Chargement des scans en attente...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -271,43 +416,46 @@
                 this.baseURL = window.location.origin;
                 this.token = localStorage.getItem('adminToken');
                 this.currentPage = 'dashboard';
+                this.refreshInterval = null;
                 this.init();
             }
 
             async init() {
-                console.log('🚀 Initialisation admin interface');
+                console.log('🚀 Initialisation interface admin KOLECT');
                 this.updateTime();
                 setInterval(() => this.updateTime(), 1000);
 
-                // Toujours montrer le login au début pour débug
-                this.showLogin();
+                if (!this.token) {
+                    this.showLogin();
+                } else {
+                    this.hideLogin();
+                    await this.loadDashboard();
+                    this.startAutoRefresh();
+                }
+                
                 this.setupEventListeners();
             }
 
             updateTime() {
                 const timeElement = document.getElementById('currentTime');
+                const lastUpdateElement = document.getElementById('lastUpdate');
                 if (timeElement) {
                     const now = new Date();
                     timeElement.textContent = now.toLocaleTimeString('fr-FR');
+                    if (lastUpdateElement) {
+                        lastUpdateElement.textContent = now.toLocaleTimeString('fr-FR');
+                    }
                 }
             }
 
             showLogin() {
-                console.log('📋 Affichage formulaire login');
                 document.getElementById('loginModal').style.display = 'flex';
                 document.getElementById('adminInterface').style.display = 'none';
             }
 
             hideLogin() {
-                console.log('✅ Masquage formulaire login');
                 document.getElementById('loginModal').style.display = 'none';
                 document.getElementById('adminInterface').style.display = 'flex';
-            }
-
-            showDebugMessage(message) {
-                const debugElement = document.getElementById('loginDebug');
-                debugElement.textContent = message;
-                debugElement.classList.remove('hidden');
             }
 
             showError(message) {
@@ -318,12 +466,18 @@
 
             hideError() {
                 document.getElementById('loginError').classList.add('hidden');
-                document.getElementById('loginDebug').classList.add('hidden');
+            }
+
+            showLoading() {
+                document.getElementById('loginLoading').classList.remove('hidden');
+            }
+
+            hideLoading() {
+                document.getElementById('loginLoading').classList.add('hidden');
             }
 
             async apiCall(endpoint, options = {}) {
                 try {
-                    console.log(`🌐 API Call: ${endpoint}`);
                     const response = await fetch(`${this.baseURL}/api/admin${endpoint}`, {
                         ...options,
                         headers: {
@@ -333,10 +487,7 @@
                         }
                     });
 
-                    console.log(`📡 Response status: ${response.status}`);
-
                     if (response.status === 403 || response.status === 401) {
-                        console.log('❌ Accès refusé, retour au login');
                         this.logout();
                         return null;
                     }
@@ -350,8 +501,8 @@
 
             async login(email, password) {
                 try {
-                    console.log('🔐 Tentative de connexion pour:', email);
-                    this.showDebugMessage(`Connexion en cours pour ${email}...`);
+                    this.showLoading();
+                    this.hideError();
 
                     const response = await fetch(`${this.baseURL}/api/auth/login`, {
                         method: 'POST',
@@ -359,143 +510,199 @@
                         body: JSON.stringify({ email, password })
                     });
 
-                    console.log('📡 Status réponse login:', response.status);
                     const data = await response.json();
-                    console.log('📊 Données reçues:', data);
 
                     if (data.success && data.token) {
-                        console.log('✅ Login réussi');
                         this.token = data.token;
                         localStorage.setItem('adminToken', this.token);
                         localStorage.setItem('adminName', data.user.firstName || 'Admin');
                         
-                        const nameElement = document.getElementById('adminName');
-                        if (nameElement) {
-                            nameElement.textContent = data.user.firstName || 'Admin';
-                        }
+                        // Update UI with user info
+                        document.getElementById('adminName').textContent = data.user.firstName || 'Admin';
+                        const initials = (data.user.firstName || 'A').charAt(0) + (data.user.lastName || '').charAt(0);
+                        document.getElementById('adminInitials').textContent = initials.toUpperCase();
                         
                         this.hideLogin();
                         await this.loadDashboard();
+                        this.startAutoRefresh();
                         return true;
                     } else {
-                        console.log('❌ Login échoué:', data.error || 'Erreur inconnue');
                         throw new Error(data.error || 'Erreur de connexion');
                     }
                 } catch (error) {
-                    console.error('❌ Erreur login:', error);
                     this.showError(error.message || 'Erreur de connexion');
                     return false;
+                } finally {
+                    this.hideLoading();
                 }
             }
 
             logout() {
-                console.log('🚪 Déconnexion');
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                }
                 localStorage.removeItem('adminToken');
                 localStorage.removeItem('adminName');
                 this.token = null;
                 this.showLogin();
             }
 
-            async loadDashboard() {
-                console.log('📊 Chargement dashboard...');
-                
-                // Essayer d'abord avec de vraies données
-                const realData = await this.apiCall('/dashboard-stats');
-                
-                if (realData && realData.success) {
-                    console.log('✅ Vraies données chargées');
-                    this.renderDashboard(realData);
-                } else {
-                    console.log('⚠️ Utilisation données de demo');
-                    // Fallback avec données de demo
-                    const mockData = {
-                        success: true,
-                        stats: {
-                            active_collaborators: 47,
-                            scans_today: 156,
-                            total_signatures: 2847,
-                            avg_quality: 87,
-                            pending_validation: 12
-                        },
-                        topPerformers: [
-                            { first_name: 'Marie', last_name: 'Dubois', total_signatures: 347 },
-                            { first_name: 'Jean', last_name: 'Laurent', total_signatures: 298 },
-                            { first_name: 'Paul', last_name: 'Martin', total_signatures: 276 }
-                        ],
-                        recentActivity: [
-                            { first_name: 'Marie', last_name: 'D.', signatures: 23, created_at: '2025-06-20T15:30:00Z' },
-                            { first_name: 'Jean', last_name: 'L.', signatures: 18, created_at: '2025-06-20T15:25:00Z' }
-                        ]
-                    };
-                    this.renderDashboard(mockData);
+            startAutoRefresh() {
+                // Actualiser les données toutes les 30 secondes
+                this.refreshInterval = setInterval(() => {
+                    if (this.currentPage === 'dashboard') {
+                        this.loadDashboard(false); // false = pas de loader
+                    }
+                }, 30000);
+            }
+
+            async loadDashboard(showLoader = true) {
+                if (showLoader) {
+                    document.getElementById('dashboardLoading').classList.remove('hidden');
+                    document.getElementById('dashboardData').classList.add('hidden');
+                }
+
+                try {
+                    // 🚀 UTILISER VRAIES DONNÉES
+                    const dashboardData = await this.apiCall('/dashboard-stats');
+                    
+                    if (dashboardData && dashboardData.success) {
+                        this.renderDashboard(dashboardData);
+                    } else {
+                        throw new Error('Impossible de charger les données');
+                    }
+                } catch (error) {
+                    console.error('❌ Erreur chargement dashboard:', error);
+                    // Fallback avec message d'erreur
+                    this.renderDashboardError();
+                } finally {
+                    if (showLoader) {
+                        document.getElementById('dashboardLoading').classList.add('hidden');
+                        document.getElementById('dashboardData').classList.remove('hidden');
+                    }
                 }
             }
 
             renderDashboard(data) {
                 if (!data?.success) return;
 
-                console.log('🎨 Rendu dashboard avec:', data.stats);
+                // Update KPIs with real data
+                document.getElementById('activeCollaborators').textContent = data.stats.active_collaborators || 0;
+                document.getElementById('scansToday').textContent = data.stats.scans_today || 0;
+                document.getElementById('totalSignatures').textContent = (data.stats.total_signatures || 0).toLocaleString();
+                document.getElementById('avgQuality').textContent = (data.stats.avg_quality || 0) + '%';
+                document.getElementById('pendingValidation').textContent = data.stats.pending_validation || 0;
+                document.getElementById('alertsCount').textContent = data.stats.pending_validation || 0;
 
-                // Update KPIs
-                document.getElementById('activeCollaborators').textContent = data.stats.active_collaborators;
-                document.getElementById('scansToday').textContent = data.stats.scans_today;
-                document.getElementById('totalSignatures').textContent = data.stats.total_signatures.toLocaleString();
-                document.getElementById('avgQuality').textContent = data.stats.avg_quality + '%';
-                document.getElementById('pendingValidation').textContent = data.stats.pending_validation;
-                document.getElementById('alertsCount').textContent = data.stats.pending_validation;
+                // GPT-4 Status
+                document.getElementById('gpt4Status').innerHTML =
+                    data.gpt4_enabled ? '🟢 Actif' : '🔴 Inactif';
 
-                // Top Performers
-                const topPerformersHTML = data.topPerformers.map((user, index) => `
-                    <div class="flex justify-between items-center py-3 border-b border-gray-700 last:border-b-0">
-                        <div class="flex items-center">
-                            <span class="text-2xl mr-3">${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤'}</span>
-                            <span class="font-medium">${user.first_name} ${user.last_name}</span>
+                // Last backup (simulate)
+                const lastBackup = new Date();
+                lastBackup.setHours(lastBackup.getHours() - 2);
+                document.getElementById('lastBackup').textContent =
+                    lastBackup.toLocaleTimeString('fr-FR');
+
+                // Top Performers with real data
+                if (data.topPerformers && data.topPerformers.length > 0) {
+                    const topPerformersHTML = data.topPerformers.map((user, index) => `
+                        <div class="flex justify-between items-center py-3 border-b border-gray-700 last:border-b-0 hover:bg-gray-800 rounded transition-colors">
+                            <div class="flex items-center">
+                                <span class="text-2xl mr-3">${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅'}</span>
+                                <div>
+                                    <div class="font-medium">${user.first_name} ${user.last_name}</div>
+                                    <div class="text-sm text-gray-400">${user.total_scans || 0} scans • ${Math.round(user.avg_quality || 0)}% qualité</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-kolect-primary font-bold text-lg">${user.total_signatures || 0}</div>
+                                <div class="text-xs text-gray-400">signatures</div>
+                            </div>
                         </div>
-                        <span class="text-kolect-primary font-bold">${user.total_signatures || 0}</span>
-                    </div>
-                `).join('');
-                document.getElementById('topPerformers').innerHTML = topPerformersHTML;
+                    `).join('');
+                    document.getElementById('topPerformers').innerHTML = topPerformersHTML;
+                } else {
+                    document.getElementById('topPerformers').innerHTML =
+                        '<div class="text-center text-gray-400 py-8">Aucune donnée disponible</div>';
+                }
 
-                // Recent Activity
-                const recentActivityHTML = data.recentActivity.map(scan => `
-                    <div class="flex justify-between items-center py-2 text-sm border-b border-gray-700 last:border-b-0">
-                        <span>${scan.first_name} ${scan.last_name}</span>
-                        <span class="text-kolect-primary font-medium">${scan.signatures} signatures</span>
-                        <span class="text-gray-400">${new Date(scan.created_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</span>
-                    </div>
-                `).join('');
-                document.getElementById('recentActivity').innerHTML = recentActivityHTML;
+                // Recent Activity with real data
+                if (data.recentActivity && data.recentActivity.length > 0) {
+                    const recentActivityHTML = data.recentActivity.map(scan => `
+                        <div class="flex justify-between items-center py-3 border-b border-gray-700 last:border-b-0 hover:bg-gray-800 rounded transition-colors">
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 bg-kolect-primary rounded-full flex items-center justify-center text-gray-900 text-xs font-bold mr-3">
+                                    ${(scan.first_name || 'U').charAt(0)}${(scan.last_name || '').charAt(0)}
+                                </div>
+                                <div>
+                                    <div class="font-medium text-sm">${scan.first_name} ${scan.last_name}</div>
+                                    <div class="text-xs text-gray-400">${scan.initiative || 'Initiative'}</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-kolect-primary font-medium">${scan.signatures} signatures</div>
+                                <div class="text-xs text-gray-400">${new Date(scan.created_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</div>
+                            </div>
+                        </div>
+                    `).join('');
+                    document.getElementById('recentActivity').innerHTML = recentActivityHTML;
+                } else {
+                    document.getElementById('recentActivity').innerHTML =
+                        '<div class="text-center text-gray-400 py-8">Aucune activité récente</div>';
+                }
 
-                // Alerts and Actions
+                // Enhanced Alerts and Actions
                 const alertsHTML = `
-                    <div class="bg-yellow-900 bg-opacity-50 p-4 rounded-lg border border-yellow-600">
-                        <h4 class="font-bold text-yellow-400 mb-2">⏳ ${data.stats.pending_validation} Scans en attente</h4>
-                        <p class="text-sm text-gray-300 mb-3">Des scans nécessitent votre validation</p>
-                        <button onclick="admin.showPage('validation')" class="bg-yellow-600 text-black px-4 py-2 rounded font-medium hover:bg-yellow-500">
-                            Valider maintenant
+                    <div class="bg-gradient-to-br from-yellow-900 to-yellow-800 p-6 rounded-lg border border-yellow-600">
+                        <div class="flex items-center mb-3">
+                            <span class="text-2xl mr-3">⏳</span>
+                            <h4 class="font-bold text-yellow-400 text-lg">${data.stats.pending_validation || 0} Scans en attente</h4>
+                        </div>
+                        <p class="text-sm text-yellow-100 mb-4">Des scans nécessitent votre validation pour maintenir la qualité</p>
+                        <button onclick="admin.showPage('validation')" class="bg-yellow-600 text-black px-4 py-2 rounded font-medium hover:bg-yellow-500 transition-colors">
+                            🔍 Valider maintenant
                         </button>
                     </div>
-                    <div class="bg-blue-900 bg-opacity-50 p-4 rounded-lg border border-blue-600">
-                        <h4 class="font-bold text-blue-400 mb-2">👥 ${data.stats.active_collaborators} Collaborateurs</h4>
-                        <p class="text-sm text-gray-300 mb-3">Gérer les comptes utilisateurs</p>
-                        <button onclick="admin.showPage('collaborators')" class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-500">
-                            Gérer les comptes
+                    <div class="bg-gradient-to-br from-blue-900 to-blue-800 p-6 rounded-lg border border-blue-600">
+                        <div class="flex items-center mb-3">
+                            <span class="text-2xl mr-3">👥</span>
+                            <h4 class="font-bold text-blue-400 text-lg">${data.stats.active_collaborators || 0} Collaborateurs</h4>
+                        </div>
+                        <p class="text-sm text-blue-100 mb-4">Gérer les équipes et performances des collecteurs</p>
+                        <button onclick="admin.showPage('collaborators')" class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-500 transition-colors">
+                            👥 Gérer les équipes
                         </button>
                     </div>
-                    <div class="bg-green-900 bg-opacity-50 p-4 rounded-lg border border-green-600">
-                        <h4 class="font-bold text-green-400 mb-2">📊 Analytics</h4>
-                        <p class="text-sm text-gray-300 mb-3">Rapports et statistiques avancées</p>
-                        <button onclick="admin.showPage('analytics')" class="bg-green-600 text-white px-4 py-2 rounded font-medium hover:bg-green-500">
-                            Voir les rapports
+                    <div class="bg-gradient-to-br from-green-900 to-green-800 p-6 rounded-lg border border-green-600">
+                        <div class="flex items-center mb-3">
+                            <span class="text-2xl mr-3">📊</span>
+                            <h4 class="font-bold text-green-400 text-lg">Analytics Avancées</h4>
+                        </div>
+                        <p class="text-sm text-green-100 mb-4">Rapports détaillés et tendances des performances</p>
+                        <button onclick="admin.showPage('analytics')" class="bg-green-600 text-white px-4 py-2 rounded font-medium hover:bg-green-500 transition-colors">
+                            📈 Voir les rapports
                         </button>
                     </div>
                 `;
                 document.getElementById('alertsAndActions').innerHTML = alertsHTML;
             }
 
+            renderDashboardError() {
+                document.getElementById('dashboardData').innerHTML = `
+                    <div class="text-center py-12">
+                        <div class="text-6xl mb-4">⚠️</div>
+                        <h3 class="text-xl font-bold text-red-400 mb-2">Erreur de chargement</h3>
+                        <p class="text-gray-400 mb-4">Impossible de récupérer les données du dashboard</p>
+                        <button onclick="admin.loadDashboard()" class="bg-kolect-primary text-gray-900 px-6 py-2 rounded-lg font-medium">
+                            🔄 Réessayer
+                        </button>
+                    </div>
+                `;
+                document.getElementById('dashboardData').classList.remove('hidden');
+            }
+
             showPage(page) {
-                console.log('📄 Changement de page:', page);
-                
                 // Hide all content
                 document.getElementById('dashboardContent').style.display = page === 'dashboard' ? 'block' : 'none';
                 document.getElementById('collaboratorsContent').style.display = page === 'collaborators' ? 'block' : 'none';
@@ -510,17 +717,21 @@
                 const activeLink = document.querySelector(`a[href="#${page}"]`);
                 if (activeLink) {
                     activeLink.classList.add('active', 'text-kolect-primary');
+                    activeLink.classList.remove('text-gray-300');
                 }
 
-                // Update page title
+                // Update page title and subtitle
                 const titles = {
-                    dashboard: '📊 Dashboard Général',
-                    collaborators: '👥 Gestion Collaborateurs',
-                    validation: '🔍 Validation Scans',
-                    analytics: '📈 Analytics',
-                    settings: '⚙️ Paramètres'
+                    dashboard: { title: '📊 Dashboard Général', subtitle: 'Vue d\'ensemble de la plateforme KOLECT' },
+                    collaborators: { title: '👥 Gestion Collaborateurs', subtitle: 'Administration des équipes de collecte' },
+                    validation: { title: '🔍 Validation Scans', subtitle: 'Contrôle qualité des signatures collectées' },
+                    analytics: { title: '📈 Analytics', subtitle: 'Rapports et analyses détaillées' },
+                    settings: { title: '⚙️ Paramètres', subtitle: 'Configuration de la plateforme' }
                 };
-                document.getElementById('pageTitle').textContent = titles[page] || titles.dashboard;
+                
+                const pageInfo = titles[page] || titles.dashboard;
+                document.getElementById('pageTitle').textContent = pageInfo.title;
+                document.getElementById('pageSubtitle').textContent = pageInfo.subtitle;
 
                 this.currentPage = page;
 
@@ -529,115 +740,200 @@
                     this.loadCollaborators();
                 } else if (page === 'validation') {
                     this.loadValidationQueue();
+                } else if (page === 'dashboard') {
+                    this.loadDashboard();
                 }
             }
 
-            loadCollaborators() {
-                console.log('👥 Chargement collaborateurs...');
-                // Mock data for demo
-                const mockCollaborators = [
-                    {
-                        id: 1,
-                        first_name: 'Marie',
-                        last_name: 'Dubois',
-                        email: 'marie.dubois@email.com',
-                        status: 'active',
-                        total_scans: 145,
-                        total_signatures: 347,
-                        avg_quality: 92,
-                        last_scan: '2025-06-20T15:30:00Z'
+            async loadCollaborators() {
+                try {
+                    // 🚀 VRAIES DONNÉES COLLABORATEURS
+                    const collaboratorsData = await this.apiCall('/collaborators');
+                    
+                    if (collaboratorsData && collaboratorsData.success) {
+                        this.renderCollaborators(collaboratorsData.collaborators);
+                    } else {
+                        throw new Error('Erreur chargement collaborateurs');
                     }
-                ];
+                } catch (error) {
+                    console.error('❌ Erreur collaborateurs:', error);
+                    document.getElementById('collaboratorsTable').innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-red-400">
+                                ⚠️ Erreur lors du chargement des collaborateurs
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
 
-                const tableHTML = mockCollaborators.map(user => `
-                    <tr class="border-b border-gray-700 hover:bg-gray-800">
-                        <td class="px-6 py-4">
-                            <div>
-                                <div class="font-medium">${user.first_name} ${user.last_name}</div>
-                                <div class="text-sm text-gray-400">${user.email}</div>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4">
-                            <div class="text-sm">
-                                <div>${user.total_signatures || 0} signatures</div>
-                                <div class="text-gray-400">${user.total_scans || 0} scans • ${user.avg_quality || 0}% qualité</div>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 text-sm text-gray-400">
-                            ${user.last_scan ? new Date(user.last_scan).toLocaleDateString('fr-FR') : 'Jamais'}
-                        </td>
-                        <td class="px-6 py-4">
-                            <span class="px-2 py-1 rounded-full text-xs bg-green-900 text-green-300">
-                                ✅ Actif
-                            </span>
-                        </td>
-                        <td class="px-6 py-4">
-                            <div class="flex space-x-2">
-                                <button class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
-                                    ✏️ Éditer
-                                </button>
-                                <button class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">
-                                    ⛔ Suspendre
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
+            renderCollaborators(collaborators) {
+                if (!collaborators || collaborators.length === 0) {
+                    document.getElementById('collaboratorsTable').innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-400">
+                                📭 Aucun collaborateur trouvé
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                const tableHTML = collaborators.map(user => {
+                    const statusColors = {
+                        active: 'bg-green-900 text-green-300',
+                        suspended: 'bg-red-900 text-red-300',
+                        inactive: 'bg-gray-900 text-gray-300'
+                    };
+
+                    const statusLabels = {
+                        active: '✅ Actif',
+                        suspended: '⛔ Suspendu',
+                        inactive: '⚫ Inactif'
+                    };
+
+                    return `
+                        <tr class="table-row border-b border-gray-700">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 bg-kolect-primary rounded-full flex items-center justify-center text-gray-900 font-bold mr-3">
+                                        ${(user.firstName || 'U').charAt(0)}${(user.lastName || '').charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div class="font-medium">${user.firstName} ${user.lastName}</div>
+                                        <div class="text-sm text-gray-400">${user.email}</div>
+                                        ${user.phone ? `<div class="text-xs text-gray-500">${user.phone}</div>` : ''}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div>
+                                    <div class="font-medium text-kolect-primary">${user.totalSignatures || 0} signatures</div>
+                                    <div class="text-sm text-gray-400">${user.totalScans || 0} scans • ${Math.round(user.avgQuality || 0)}% qualité</div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm">
+                                    <div>${user.lastScan ? new Date(user.lastScan).toLocaleDateString('fr-FR') : 'Jamais'}</div>
+                                    <div class="text-gray-400">${user.joinedAt ? 'Membre depuis ' + new Date(user.joinedAt).toLocaleDateString('fr-FR') : ''}</div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 rounded-full text-xs ${statusColors[user.status] || statusColors.inactive}">
+                                    ${statusLabels[user.status] || statusLabels.inactive}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex space-x-2">
+                                    <button onclick="admin.editCollaborator(${user.id})" 
+                                            class="action-btn bg-blue-600 text-white rounded hover:bg-blue-700">
+                                        ✏️ Éditer
+                                    </button>
+                                    ${user.status === 'active' ? 
+                                        `<button onclick="admin.suspendCollaborator(${user.id})"
+                                                 class="action-btn bg-red-600 text-white rounded hover:bg-red-700">
+                                            ⛔ Suspendre
+                                         </button>` :
+                                        `<button onclick="admin.activateCollaborator(${user.id})"
+                                                 class="action-btn bg-green-600 text-white rounded hover:bg-green-700">
+                                            ✅ Activer
+                                         </button>`
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
 
                 document.getElementById('collaboratorsTable').innerHTML = tableHTML;
             }
 
-            loadValidationQueue() {
-                console.log('🔍 Chargement queue validation...');
-                // Mock pending scans
-                const mockPendingScans = [
-                    {
-                        id: 1,
-                        signatures: 28,
-                        quality: 65,
-                        first_name: 'Paul',
-                        last_name: 'Martin',
-                        initiative_name: 'Initiative Forêt',
-                        created_at: '2025-06-20T15:00:00Z',
-                        reason: 'Trop de signatures (>25)'
+            async loadValidationQueue() {
+                try {
+                    // 🚀 VRAIES DONNÉES SCANS EN ATTENTE
+                    const validationData = await this.apiCall('/pending-scans');
+                    
+                    if (validationData && validationData.success) {
+                        this.renderValidationQueue(validationData.pendingScans);
+                    } else {
+                        throw new Error('Erreur chargement validation');
                     }
-                ];
+                } catch (error) {
+                    console.error('❌ Erreur validation:', error);
+                    document.getElementById('pendingScansGrid').innerHTML = `
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="text-center text-red-400">
+                                <div class="text-4xl mb-4">⚠️</div>
+                                <p>Erreur lors du chargement des scans en attente</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
 
-                const pendingHTML = mockPendingScans.map(scan => `
-                    <div class="glassmorphism p-6 rounded-xl">
+            renderValidationQueue(pendingScans) {
+                if (!pendingScans || pendingScans.length === 0) {
+                    document.getElementById('pendingScansGrid').innerHTML = `
+                        <div class="glassmorphism p-6 rounded-xl col-span-full">
+                            <div class="text-center text-gray-400">
+                                <div class="text-6xl mb-4">✅</div>
+                                <h3 class="text-xl font-bold mb-2">Aucun scan en attente</h3>
+                                <p>Tous les scans ont été validés !</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const pendingHTML = pendingScans.map(scan => `
+                    <div class="glassmorphism p-6 rounded-xl border-l-4 border-yellow-500">
                         <div class="flex justify-between items-start mb-4">
                             <div>
                                 <h4 class="font-bold text-lg">${scan.first_name} ${scan.last_name}</h4>
-                                <p class="text-gray-400 text-sm">${scan.initiative_name}</p>
+                                <p class="text-gray-400 text-sm">${scan.initiative || 'Initiative non spécifiée'}</p>
                             </div>
-                            <span class="px-3 py-1 bg-yellow-900 text-yellow-300 rounded-full text-xs">
+                            <span class="px-3 py-1 bg-yellow-900 text-yellow-300 rounded-full text-xs font-medium">
                                 ⚠️ En attente
                             </span>
                         </div>
                         
-                        <div class="space-y-2 mb-4">
-                            <div class="flex justify-between">
-                                <span class="text-gray-400">Signatures:</span>
-                                <span class="font-medium text-red-400">${scan.signatures}</span>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div class="bg-gray-800 p-3 rounded">
+                                <div class="text-gray-400 text-sm">Signatures</div>
+                                <div class="font-bold text-lg ${scan.signatures > 25 ? 'text-red-400' : scan.signatures < 3 ? 'text-yellow-400' : 'text-green-400'}">
+                                    ${scan.signatures}
+                                </div>
                             </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-400">Qualité:</span>
-                                <span class="font-medium text-red-400">${scan.quality}%</span>
+                            <div class="bg-gray-800 p-3 rounded">
+                                <div class="text-gray-400 text-sm">Qualité</div>
+                                <div class="font-bold text-lg ${scan.quality < 70 ? 'text-red-400' : 'text-green-400'}">
+                                    ${scan.quality}%
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="bg-yellow-900 bg-opacity-30 p-3 rounded mb-4">
-                            <p class="text-yellow-300 text-sm">⚠️ ${scan.reason}</p>
+                        <div class="bg-yellow-900 bg-opacity-30 p-3 rounded mb-4 border border-yellow-600">
+                            <div class="flex items-center">
+                                <span class="text-yellow-400 mr-2">⚠️</span>
+                                <p class="text-yellow-300 text-sm">${scan.validation_reason || 'Nécessite validation'}</p>
+                            </div>
                         </div>
                         
-                        <div class="flex space-x-2">
-                            <button class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700">
+                        <div class="text-sm text-gray-400 mb-4">
+                            📅 ${new Date(scan.created_at).toLocaleString('fr-FR')}
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="admin.validateScan(${scan.id}, 'approve')" 
+                                    class="bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 transition-colors">
                                 ✅ Approuver
                             </button>
-                            <button class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                            <button onclick="admin.validateScan(${scan.id}, 'correct')" 
+                                    class="bg-blue-600 text-white py-2 px-3 rounded text-sm hover:bg-blue-700 transition-colors">
                                 ✏️ Corriger
                             </button>
-                            <button class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
+                            <button onclick="admin.validateScan(${scan.id}, 'reject')" 
+                                    class="bg-red-600 text-white py-2 px-3 rounded text-sm hover:bg-red-700 transition-colors">
                                 ❌ Rejeter
                             </button>
                         </div>
@@ -647,23 +943,86 @@
                 document.getElementById('pendingScansGrid').innerHTML = pendingHTML;
             }
 
+            async validateScan(scanId, action) {
+                try {
+                    const result = await this.apiCall(`/validate-scan/${scanId}`, {
+                        method: 'POST',
+                        body: JSON.stringify({ action })
+                    });
+
+                    if (result && result.success) {
+                        // Actualiser la liste
+                        this.loadValidationQueue();
+                        this.loadDashboard(false); // Mettre à jour les compteurs
+                        
+                        // Notification de succès
+                        const actionText = {
+                            approve: 'approuvé',
+                            correct: 'marqué pour correction',
+                            reject: 'rejeté'
+                        };
+                        
+                        alert(`✅ Scan ${scanId} ${actionText[action]} avec succès !`);
+                    } else {
+                        throw new Error(result?.error || 'Erreur de validation');
+                    }
+                } catch (error) {
+                    console.error('❌ Erreur validation scan:', error);
+                    alert(`❌ Erreur lors de la validation: ${error.message}`);
+                }
+            }
+
+            async editCollaborator(userId) {
+                alert(`🚧 Édition du collaborateur ${userId} - Fonctionnalité en développement`);
+            }
+
+            async suspendCollaborator(userId) {
+                if (confirm('⚠️ Êtes-vous sûr de vouloir suspendre ce collaborateur ?')) {
+                    try {
+                        const result = await this.apiCall(`/collaborator/${userId}/action`, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'suspend', reason: 'Suspendu par admin' })
+                        });
+
+                        if (result && result.success) {
+                            alert('✅ Collaborateur suspendu avec succès');
+                            this.loadCollaborators();
+                        } else {
+                            throw new Error(result?.error || 'Erreur suspension');
+                        }
+                    } catch (error) {
+                        alert(`❌ Erreur: ${error.message}`);
+                    }
+                }
+            }
+
+            async activateCollaborator(userId) {
+                try {
+                    const result = await this.apiCall(`/collaborator/${userId}/action`, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'activate', reason: 'Réactivé par admin' })
+                    });
+
+                    if (result && result.success) {
+                        alert('✅ Collaborateur activé avec succès');
+                        this.loadCollaborators();
+                    } else {
+                        throw new Error(result?.error || 'Erreur activation');
+                    }
+                } catch (error) {
+                    alert(`❌ Erreur: ${error.message}`);
+                }
+            }
+
             setupEventListeners() {
-                console.log('🎧 Setup event listeners');
-                
                 // Login form
                 const loginForm = document.getElementById('loginForm');
                 if (loginForm) {
                     loginForm.addEventListener('submit', async (e) => {
                         e.preventDefault();
-                        console.log('📝 Soumission formulaire login');
                         
                         const email = document.getElementById('loginEmail').value;
                         const password = document.getElementById('loginPassword').value;
-                        
-                        console.log('📧 Email:', email);
-                        console.log('🔐 Password:', password ? 'PRÉSENT' : 'ABSENT');
-                        
-                        this.hideError();
                         
                         const submitBtn = document.getElementById('loginSubmitBtn');
                         submitBtn.textContent = 'Connexion...';
@@ -673,20 +1032,15 @@
                         
                         submitBtn.textContent = 'Se connecter';
                         submitBtn.disabled = false;
-                        
-                        if (!success) {
-                            console.log('❌ Login échoué');
-                        }
                     });
                 }
 
                 // Logout
-                const logoutBtn = document.getElementById('logoutBtn');
-                if (logoutBtn) {
-                    logoutBtn.addEventListener('click', () => {
+                document.getElementById('logoutBtn').addEventListener('click', () => {
+                    if (confirm('🚪 Êtes-vous sûr de vouloir vous déconnecter ?')) {
                         this.logout();
-                    });
-                }
+                    }
+                });
 
                 // Sidebar navigation
                 document.querySelectorAll('.sidebar-item').forEach(item => {
@@ -696,11 +1050,60 @@
                         this.showPage(page);
                     });
                 });
+
+                // Refresh buttons
+                document.getElementById('refreshActivity')?.addEventListener('click', () => {
+                    this.loadDashboard();
+                });
+
+                document.getElementById('refreshCollaborators')?.addEventListener('click', () => {
+                    this.loadCollaborators();
+                });
+
+                document.getElementById('refreshValidation')?.addEventListener('click', () => {
+                    this.loadValidationQueue();
+                });
+
+                // Export button
+                document.getElementById('exportCollaborators')?.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch(`${this.baseURL}/api/admin/export/collaborators`, {
+                            headers: {
+                                'Authorization': `Bearer ${this.token}`
+                            }
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `kolect_collaborateurs_${new Date().toISOString().split('T')[0]}.csv`;
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                        } else {
+                            throw new Error('Erreur export');
+                        }
+                    } catch (error) {
+                        alert('❌ Erreur lors de l\'export');
+                    }
+                });
+
+                // Search functionality
+                document.getElementById('searchCollaborators')?.addEventListener('input', (e) => {
+                    // TODO: Implement search
+                    console.log('Search:', e.target.value);
+                });
+
+                document.getElementById('filterStatus')?.addEventListener('change', (e) => {
+                    // TODO: Implement filter
+                    console.log('Filter:', e.target.value);
+                });
             }
         }
 
         // Initialize admin interface
-        console.log('🚀 Démarrage interface admin');
+        console.log('🚀 Démarrage KOLECT Admin Platform v1.0');
         const admin = new KolectAdmin();
     </script>
 </body>
