@@ -44,7 +44,7 @@ router.get('/personal-settings', authenticateToken, async (req, res) => {
         MAX(s.scan_date) as last_scan_date,
         AVG(s.quality) as avg_quality
       FROM collaborators c
-      LEFT JOIN scans s ON c.id = s.collaborator_id
+      LEFT JOIN scans s ON c.id = s.user_id
       WHERE c.id = $1
       GROUP BY c.id
     `, [req.user.userId]);
@@ -208,7 +208,7 @@ router.get('/personal-monthly', authenticateToken, async (req, res) => {
         COUNT(DISTINCT initiative) as initiative_count,
         STRING_AGG(DISTINCT initiative, ', ') as initiatives
       FROM scans 
-      WHERE collaborator_id = $1 
+      WHERE user_id = $1 
         AND scan_date >= CURRENT_DATE - INTERVAL '12 months'
       GROUP BY DATE_TRUNC('month', scan_date)
       ORDER BY month DESC
@@ -250,21 +250,21 @@ router.get('/personal-ranking', authenticateToken, async (req, res) => {
     const userRank = await pool.query(`
       WITH user_stats AS (
         SELECT 
-          collaborator_id,
+          user_id,
           SUM(signatures) as total_signatures,
           COUNT(*) as total_scans,
           RANK() OVER (ORDER BY SUM(signatures) DESC) as rank
         FROM scans 
         WHERE signatures > 0
-        GROUP BY collaborator_id
+        GROUP BY user_id
       )
       SELECT 
         rank,
         total_signatures,
         total_scans,
-        (SELECT COUNT(DISTINCT collaborator_id) FROM scans WHERE signatures > 0) as total_collaborators
+        (SELECT COUNT(DISTINCT user_id) FROM scans WHERE signatures > 0) as total_collaborators
       FROM user_stats 
-      WHERE collaborator_id = $1
+      WHERE user_id = $1
     `, [req.user.userId]);
 
     let ranking = null;

@@ -410,9 +410,9 @@ app.post('/api/debug/fix-database', async (req, res) => {
       results.errors.push(`Erreur création initiatives: ${err.message}`);
     }
     
-    // 3. Corriger table scans avec collaborator_id
+    // 3. Corriger table scans avec user_id
     const scanColumns = [
-      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS collaborator_id INTEGER',
+      'ALTER TABLE scans ADD COLUMN IF NOT EXISTS user_id INTEGER',
       'ALTER TABLE scans ADD COLUMN IF NOT EXISTS initiative_id INTEGER',
       'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE scans ADD COLUMN IF NOT EXISTS signatures_validated INTEGER DEFAULT 0',
@@ -767,7 +767,7 @@ app.post('/api/upload-scan', authenticateToken, upload.array('photos', 10), asyn
     // ✅ SAUVEGARDE EN BASE - ASSOCIÉE À L'UTILISATEUR
     const scanResult = await db.query(`
       INSERT INTO scans (
-        collaborator_id,
+        user_id,
         initiative, 
         signatures, 
         quality, 
@@ -800,7 +800,7 @@ app.post('/api/upload-scan', authenticateToken, upload.array('photos', 10), asyn
     const savedScan = scanResult.rows[0];
     console.log('💾 Scan sauvegardé:', {
       id: savedScan.id,
-      collaborator_id: savedScan.collaborator_id,
+      user_id: savedScan.user_id,
       signatures: savedScan.signatures
     });
 
@@ -821,7 +821,7 @@ app.post('/api/upload-scan', authenticateToken, upload.array('photos', 10), asyn
         SUM(signatures) as total_personal_signatures,
         AVG(quality) as avg_quality
       FROM scans 
-      WHERE collaborator_id = $1
+      WHERE user_id = $1
     `, [req.user.id]);
 
     const stats = personalStats.rows[0];
@@ -907,7 +907,7 @@ app.get('/api/test-structure', async (req, res) => {
     
     // Vérifier spécifiquement les colonnes importantes
     const criticalColumns = {
-      scans: ['collaborator_id', 'signatures', 'quality', 'confidence'],
+      scans: ['user_id', 'signatures', 'quality', 'confidence'],
       collaborators: ['first_name', 'last_name', 'phone', 'address']
     };
     
