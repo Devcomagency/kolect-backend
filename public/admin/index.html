@@ -34,8 +34,8 @@
     </style>
 </head>
 <body class="bg-gray-900 text-white font-sans">
-    <!-- Login Modal (Initially Hidden) -->
-    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
+    <!-- Login Modal (Initially Visible) -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
         <div class="glassmorphism p-8 rounded-2xl max-w-md w-full mx-4">
             <div class="text-center mb-6">
                 <h1 class="text-3xl font-bold text-kolect-primary">🔐 KOLECT ADMIN</h1>
@@ -50,17 +50,18 @@
                     <input type="password" id="loginPassword" placeholder="Mot de passe"
                            class="w-full p-4 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-kolect-primary focus:outline-none">
                 </div>
-                <button type="submit"
+                <button type="submit" id="loginSubmitBtn"
                         class="w-full kolect-primary text-gray-900 p-4 rounded-lg font-bold text-lg hover:opacity-90 transition-opacity">
                     Se connecter
                 </button>
                 <div id="loginError" class="text-red-400 text-sm mt-3 hidden"></div>
+                <div id="loginDebug" class="text-blue-400 text-xs mt-2 hidden"></div>
             </form>
         </div>
     </div>
 
-    <!-- Main Admin Interface -->
-    <div id="adminInterface" class="flex h-screen">
+    <!-- Main Admin Interface (Initially Hidden) -->
+    <div id="adminInterface" class="flex h-screen" style="display: none;">
         <!-- Sidebar -->
         <div class="w-64 bg-gray-800 border-r border-gray-700">
             <div class="p-6 border-b border-gray-700">
@@ -264,19 +265,6 @@
         </div>
     </div>
 
-    <!-- Modal for Scan Validation -->
-    <div id="scanValidationModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
-        <div class="glassmorphism p-6 rounded-2xl max-w-2xl w-full mx-4 max-h-90vh overflow-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold">🔍 Validation de Scan</h3>
-                <button id="closeValidationModal" class="text-gray-400 hover:text-white text-2xl">&times;</button>
-            </div>
-            <div id="scanValidationContent">
-                <!-- Loaded dynamically -->
-            </div>
-        </div>
-    </div>
-
     <script>
         class KolectAdmin {
             constructor() {
@@ -287,35 +275,55 @@
             }
 
             async init() {
+                console.log('🚀 Initialisation admin interface');
                 this.updateTime();
                 setInterval(() => this.updateTime(), 1000);
 
-                if (!this.token) {
-                    this.showLogin();
-                    return;
-                }
-
-                await this.loadDashboard();
+                // Toujours montrer le login au début pour débug
+                this.showLogin();
                 this.setupEventListeners();
             }
 
             updateTime() {
-                const now = new Date();
-                document.getElementById('currentTime').textContent = now.toLocaleTimeString('fr-FR');
+                const timeElement = document.getElementById('currentTime');
+                if (timeElement) {
+                    const now = new Date();
+                    timeElement.textContent = now.toLocaleTimeString('fr-FR');
+                }
             }
 
             showLogin() {
+                console.log('📋 Affichage formulaire login');
                 document.getElementById('loginModal').style.display = 'flex';
                 document.getElementById('adminInterface').style.display = 'none';
             }
 
             hideLogin() {
+                console.log('✅ Masquage formulaire login');
                 document.getElementById('loginModal').style.display = 'none';
                 document.getElementById('adminInterface').style.display = 'flex';
             }
 
+            showDebugMessage(message) {
+                const debugElement = document.getElementById('loginDebug');
+                debugElement.textContent = message;
+                debugElement.classList.remove('hidden');
+            }
+
+            showError(message) {
+                const errorElement = document.getElementById('loginError');
+                errorElement.textContent = message;
+                errorElement.classList.remove('hidden');
+            }
+
+            hideError() {
+                document.getElementById('loginError').classList.add('hidden');
+                document.getElementById('loginDebug').classList.add('hidden');
+            }
+
             async apiCall(endpoint, options = {}) {
                 try {
+                    console.log(`🌐 API Call: ${endpoint}`);
                     const response = await fetch(`${this.baseURL}/api/admin${endpoint}`, {
                         ...options,
                         headers: {
@@ -325,48 +333,63 @@
                         }
                     });
 
+                    console.log(`📡 Response status: ${response.status}`);
+
                     if (response.status === 403 || response.status === 401) {
+                        console.log('❌ Accès refusé, retour au login');
                         this.logout();
                         return null;
                     }
 
                     return await response.json();
                 } catch (error) {
-                    console.error('API Error:', error);
+                    console.error('❌ API Error:', error);
                     return null;
                 }
             }
 
             async login(email, password) {
                 try {
+                    console.log('🔐 Tentative de connexion pour:', email);
+                    this.showDebugMessage(`Connexion en cours pour ${email}...`);
+
                     const response = await fetch(`${this.baseURL}/api/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email, password })
                     });
 
+                    console.log('📡 Status réponse login:', response.status);
                     const data = await response.json();
-                    
-                    if (data.success && data.user.role && (data.user.role === 'admin' || data.user.role === 'super_admin')) {
+                    console.log('📊 Données reçues:', data);
+
+                    if (data.success && data.token) {
+                        console.log('✅ Login réussi');
                         this.token = data.token;
                         localStorage.setItem('adminToken', this.token);
                         localStorage.setItem('adminName', data.user.firstName || 'Admin');
-                        document.getElementById('adminName').textContent = data.user.firstName || 'Admin';
+                        
+                        const nameElement = document.getElementById('adminName');
+                        if (nameElement) {
+                            nameElement.textContent = data.user.firstName || 'Admin';
+                        }
+                        
                         this.hideLogin();
                         await this.loadDashboard();
-                        this.setupEventListeners();
                         return true;
                     } else {
-                        throw new Error('Accès admin requis');
+                        console.log('❌ Login échoué:', data.error || 'Erreur inconnue');
+                        throw new Error(data.error || 'Erreur de connexion');
                     }
                 } catch (error) {
-                    document.getElementById('loginError').textContent = error.message;
-                    document.getElementById('loginError').classList.remove('hidden');
+                    console.error('❌ Erreur login:', error);
+                    this.showError(error.message || 'Erreur de connexion');
                     return false;
                 }
             }
 
             logout() {
+                console.log('🚪 Déconnexion');
                 localStorage.removeItem('adminToken');
                 localStorage.removeItem('adminName');
                 this.token = null;
@@ -374,35 +397,44 @@
             }
 
             async loadDashboard() {
-                // Simulate API call for demo
-                const mockData = {
-                    success: true,
-                    stats: {
-                        active_collaborators: 47,
-                        scans_today: 156,
-                        total_signatures: 2847,
-                        avg_quality: 87,
-                        pending_validation: 12
-                    },
-                    topPerformers: [
-                        { first_name: 'Marie', last_name: 'Dubois', total_signatures: 347 },
-                        { first_name: 'Jean', last_name: 'Laurent', total_signatures: 298 },
-                        { first_name: 'Paul', last_name: 'Martin', total_signatures: 276 },
-                        { first_name: 'Sophie', last_name: 'Bernard', total_signatures: 245 },
-                        { first_name: 'Lucas', last_name: 'Petit', total_signatures: 223 }
-                    ],
-                    recentActivity: [
-                        { first_name: 'Marie', last_name: 'D.', signatures: 23, created_at: '2025-06-20T15:30:00Z' },
-                        { first_name: 'Jean', last_name: 'L.', signatures: 18, created_at: '2025-06-20T15:25:00Z' },
-                        { first_name: 'Paul', last_name: 'M.', signatures: 15, created_at: '2025-06-20T15:20:00Z' }
-                    ]
-                };
-
-                this.renderDashboard(mockData);
+                console.log('📊 Chargement dashboard...');
+                
+                // Essayer d'abord avec de vraies données
+                const realData = await this.apiCall('/dashboard-stats');
+                
+                if (realData && realData.success) {
+                    console.log('✅ Vraies données chargées');
+                    this.renderDashboard(realData);
+                } else {
+                    console.log('⚠️ Utilisation données de demo');
+                    // Fallback avec données de demo
+                    const mockData = {
+                        success: true,
+                        stats: {
+                            active_collaborators: 47,
+                            scans_today: 156,
+                            total_signatures: 2847,
+                            avg_quality: 87,
+                            pending_validation: 12
+                        },
+                        topPerformers: [
+                            { first_name: 'Marie', last_name: 'Dubois', total_signatures: 347 },
+                            { first_name: 'Jean', last_name: 'Laurent', total_signatures: 298 },
+                            { first_name: 'Paul', last_name: 'Martin', total_signatures: 276 }
+                        ],
+                        recentActivity: [
+                            { first_name: 'Marie', last_name: 'D.', signatures: 23, created_at: '2025-06-20T15:30:00Z' },
+                            { first_name: 'Jean', last_name: 'L.', signatures: 18, created_at: '2025-06-20T15:25:00Z' }
+                        ]
+                    };
+                    this.renderDashboard(mockData);
+                }
             }
 
             renderDashboard(data) {
                 if (!data?.success) return;
+
+                console.log('🎨 Rendu dashboard avec:', data.stats);
 
                 // Update KPIs
                 document.getElementById('activeCollaborators').textContent = data.stats.active_collaborators;
@@ -462,6 +494,8 @@
             }
 
             showPage(page) {
+                console.log('📄 Changement de page:', page);
+                
                 // Hide all content
                 document.getElementById('dashboardContent').style.display = page === 'dashboard' ? 'block' : 'none';
                 document.getElementById('collaboratorsContent').style.display = page === 'collaborators' ? 'block' : 'none';
@@ -472,7 +506,11 @@
                     item.classList.remove('active', 'text-kolect-primary');
                     item.classList.add('text-gray-300');
                 });
-                document.querySelector(`a[href="#${page}"]`).classList.add('active', 'text-kolect-primary');
+                
+                const activeLink = document.querySelector(`a[href="#${page}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('active', 'text-kolect-primary');
+                }
 
                 // Update page title
                 const titles = {
@@ -495,6 +533,7 @@
             }
 
             loadCollaborators() {
+                console.log('👥 Chargement collaborateurs...');
                 // Mock data for demo
                 const mockCollaborators = [
                     {
@@ -507,19 +546,7 @@
                         total_signatures: 347,
                         avg_quality: 92,
                         last_scan: '2025-06-20T15:30:00Z'
-                    },
-                    {
-                        id: 2,
-                        first_name: 'Jean',
-                        last_name: 'Laurent',
-                        email: 'jean.laurent@email.com',
-                        status: 'active',
-                        total_scans: 120,
-                        total_signatures: 298,
-                        avg_quality: 88,
-                        last_scan: '2025-06-20T14:20:00Z'
-                    },
-                    // Add more mock data as needed
+                    }
                 ];
 
                 const tableHTML = mockCollaborators.map(user => `
@@ -540,30 +567,18 @@
                             ${user.last_scan ? new Date(user.last_scan).toLocaleDateString('fr-FR') : 'Jamais'}
                         </td>
                         <td class="px-6 py-4">
-                            <span class="px-2 py-1 rounded-full text-xs ${
-                                user.status === 'active' ? 'bg-green-900 text-green-300' :
-                                user.status === 'suspended' ? 'bg-red-900 text-red-300' :
-                                'bg-gray-900 text-gray-300'
-                            }">
-                                ${user.status === 'active' ? '✅ Actif' : user.status === 'suspended' ? '⛔ Suspendu' : '⚫ Inactif'}
+                            <span class="px-2 py-1 rounded-full text-xs bg-green-900 text-green-300">
+                                ✅ Actif
                             </span>
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex space-x-2">
-                                <button onclick="admin.editCollaborator(${user.id})" 
-                                        class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
+                                <button class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
                                     ✏️ Éditer
                                 </button>
-                                ${user.status === 'active' ? 
-                                    `<button onclick="admin.suspendCollaborator(${user.id})"
-                                             class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">
-                                        ⛔ Suspendre
-                                     </button>` :
-                                    `<button onclick="admin.activateCollaborator(${user.id})"
-                                             class="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700">
-                                        ✅ Activer
-                                     </button>`
-                                }
+                                <button class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">
+                                    ⛔ Suspendre
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -573,6 +588,7 @@
             }
 
             loadValidationQueue() {
+                console.log('🔍 Chargement queue validation...');
                 // Mock pending scans
                 const mockPendingScans = [
                     {
@@ -584,16 +600,6 @@
                         initiative_name: 'Initiative Forêt',
                         created_at: '2025-06-20T15:00:00Z',
                         reason: 'Trop de signatures (>25)'
-                    },
-                    {
-                        id: 2,
-                        signatures: 2,
-                        quality: 45,
-                        first_name: 'Sophie',
-                        last_name: 'Bernard',
-                        initiative_name: 'Initiative Commune',
-                        created_at: '2025-06-20T14:30:00Z',
-                        reason: 'Qualité faible + peu de signatures'
                     }
                 ];
 
@@ -612,19 +618,11 @@
                         <div class="space-y-2 mb-4">
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Signatures:</span>
-                                <span class="font-medium ${scan.signatures > 25 ? 'text-red-400' : scan.signatures < 3 ? 'text-yellow-400' : 'text-green-400'}">
-                                    ${scan.signatures}
-                                </span>
+                                <span class="font-medium text-red-400">${scan.signatures}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Qualité:</span>
-                                <span class="font-medium ${scan.quality < 70 ? 'text-red-400' : 'text-green-400'}">
-                                    ${scan.quality}%
-                                </span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-400">Date:</span>
-                                <span class="text-sm">${new Date(scan.created_at).toLocaleString('fr-FR')}</span>
+                                <span class="font-medium text-red-400">${scan.quality}%</span>
                             </div>
                         </div>
                         
@@ -633,16 +631,13 @@
                         </div>
                         
                         <div class="flex space-x-2">
-                            <button onclick="admin.validateScan(${scan.id}, 'approve')" 
-                                    class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700">
+                            <button class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700">
                                 ✅ Approuver
                             </button>
-                            <button onclick="admin.validateScan(${scan.id}, 'correct')" 
-                                    class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                            <button class="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
                                 ✏️ Corriger
                             </button>
-                            <button onclick="admin.validateScan(${scan.id}, 'reject')" 
-                                    class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
+                            <button class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
                                 ❌ Rejeter
                             </button>
                         </div>
@@ -652,49 +647,46 @@
                 document.getElementById('pendingScansGrid').innerHTML = pendingHTML;
             }
 
-            validateScan(scanId, action) {
-                // Mock validation
-                const actionText = {
-                    approve: 'approuvé',
-                    correct: 'marqué pour correction',
-                    reject: 'rejeté'
-                };
-                
-                alert(`Scan ${scanId} ${actionText[action]} avec succès !`);
-                
-                // Reload validation queue
-                this.loadValidationQueue();
-            }
-
-            editCollaborator(userId) {
-                alert(`Édition du collaborateur ${userId} (fonctionnalité à implémenter)`);
-            }
-
-            suspendCollaborator(userId) {
-                if (confirm('Êtes-vous sûr de vouloir suspendre ce collaborateur ?')) {
-                    alert(`Collaborateur ${userId} suspendu !`);
-                    this.loadCollaborators();
-                }
-            }
-
-            activateCollaborator(userId) {
-                alert(`Collaborateur ${userId} activé !`);
-                this.loadCollaborators();
-            }
-
             setupEventListeners() {
+                console.log('🎧 Setup event listeners');
+                
                 // Login form
-                document.getElementById('loginForm').addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const email = document.getElementById('loginEmail').value;
-                    const password = document.getElementById('loginPassword').value;
-                    await this.login(email, password);
-                });
+                const loginForm = document.getElementById('loginForm');
+                if (loginForm) {
+                    loginForm.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        console.log('📝 Soumission formulaire login');
+                        
+                        const email = document.getElementById('loginEmail').value;
+                        const password = document.getElementById('loginPassword').value;
+                        
+                        console.log('📧 Email:', email);
+                        console.log('🔐 Password:', password ? 'PRÉSENT' : 'ABSENT');
+                        
+                        this.hideError();
+                        
+                        const submitBtn = document.getElementById('loginSubmitBtn');
+                        submitBtn.textContent = 'Connexion...';
+                        submitBtn.disabled = true;
+                        
+                        const success = await this.login(email, password);
+                        
+                        submitBtn.textContent = 'Se connecter';
+                        submitBtn.disabled = false;
+                        
+                        if (!success) {
+                            console.log('❌ Login échoué');
+                        }
+                    });
+                }
 
                 // Logout
-                document.getElementById('logoutBtn').addEventListener('click', () => {
-                    this.logout();
-                });
+                const logoutBtn = document.getElementById('logoutBtn');
+                if (logoutBtn) {
+                    logoutBtn.addEventListener('click', () => {
+                        this.logout();
+                    });
+                }
 
                 // Sidebar navigation
                 document.querySelectorAll('.sidebar-item').forEach(item => {
@@ -704,19 +696,11 @@
                         this.showPage(page);
                     });
                 });
-
-                // Search and filters
-                document.getElementById('searchCollaborators')?.addEventListener('input', (e) => {
-                    // Implement search functionality
-                });
-
-                document.getElementById('filterStatus')?.addEventListener('change', (e) => {
-                    // Implement filter functionality
-                });
             }
         }
 
         // Initialize admin interface
+        console.log('🚀 Démarrage interface admin');
         const admin = new KolectAdmin();
     </script>
 </body>
