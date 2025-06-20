@@ -2,25 +2,64 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 
 const authenticateToken = async (req, res, next) => {
+  // 🚨 LOGS DE DEBUG TEMPORAIRES
+  console.log('🔍 === DEBUG COMPLET ENVIRONMENT ===');
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('PORT:', process.env.PORT);
+  console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+  console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET);
+  console.log('JWT_SECRET value:', process.env.JWT_SECRET ? `"${process.env.JWT_SECRET}"` : 'UNDEFINED');
+  console.log('JWT_SECRET type:', typeof process.env.JWT_SECRET);
+  console.log('All JWT env vars:', Object.keys(process.env).filter(k => k.includes('JWT')));
+  console.log('🔍 === FIN DEBUG ENVIRONMENT ===');
+
   console.log('🔍 === DEBUG AUTH MIDDLEWARE ===');
   
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  console.log('🔍 Authorization header:', authHeader);
-  console.log('🔍 Token extrait:', token ? token.substring(0, 50) + '...' : 'AUCUN');
+  console.log('🔍 Authorization header:', authHeader ? 'PRÉSENT' : 'ABSENT');
+  console.log('🔍 Token extrait:', token ? 'PRÉSENT (' + token.substring(0, 20) + '...)' : 'AUCUN');
 
   if (!token) {
     console.log('❌ Aucun token fourni');
-    return res.status(401).json({ error: 'Token requis' });
+    return res.status(401).json({
+      success: false,
+      error: 'Token requis'
+    });
   }
 
   try {
-    console.log('🔑 JWT Secret utilisé:', process.env.JWT_SECRET);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Token décodé avec succès, userId:', decoded.userId);
+    console.log('🔑 JWT Secret présent:', process.env.JWT_SECRET ? 'OUI' : 'NON');
     
-    // ✅ CORRECTION : Utiliser uniquement les colonnes qui EXISTENT
+    if (!process.env.JWT_SECRET) {
+      console.log('❌ JWT_SECRET manquant dans les variables d\'environnement');
+      return res.status(500).json({
+        success: false,
+        error: 'Configuration serveur incorrecte - JWT_SECRET manquant'
+      });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token décodé avec succès:', {
+      userId: decoded.userId,
+      id: decoded.id,
+      email: decoded.email
+    });
+    
+    // Extraire l'ID (support ancien/nouveau format)
+    const userId = decoded.userId || decoded.id;
+    console.log('👤 User ID final extrait:', userId);
+    
+    if (!userId) {
+      console.log('❌ Pas d\'ID utilisateur dans le token');
+      return res.status(403).json({
+        success: false,
+        error: 'Token invalide - pas d\'ID utilisateur'
+      });
+    }
+    
+    // ✅ REQUÊTE POUR VÉRIFIER L'UTILISATEUR
     const userQuery = `
       SELECT 
         id,
@@ -28,67 +67,89 @@ const authenticateToken = async (req, res, next) => {
         last_name,
         email,
         phone,
-        password_hash,
         status,
-        contract_signed,
-        contract_signed_at,
-        contract_pdf_url
+        contract_signed
       FROM collaborators 
-      WHERE id = $1
+      WHERE id = $1 AND status = 'active'
     `;
-    const userResult = await pool.query(userQuery, [decoded.userId]);
+    
+    const userResult = await pool.query(userQuery, [userId]);
     
     if (userResult.rows.length === 0) {
-      console.error('❌ Utilisateur non trouvé dans la base:', decoded.userId);
-      return res.status(401).json({ error: 'Utilisateur non trouvé' });
+      console.error('❌ Utilisateur non trouvé ou inactif:', userId);
+      return res.status(403).json({
+        success: false,
+        error: 'Utilisateur non trouvé ou inactif'
+      });
     }
     
+    const user = userResult.rows[0];
     console.log('✅ Utilisateur trouvé:', {
-      id: userResult.rows[0].id,
-      email: userResult.rows[0].email,
-      status: userResult.rows[0].status
+      id: user.id,
+      email: user.email,
+      firstName: user.first_name,
+      status: user.status
     });
 
-    const user = userResult.rows[0];
-    
-    // ✅ CORRECTION : Mapper uniquement les champs qui EXISTENT
+    // ✅ CORRECTION CRITIQUE : req.user.id (pas userId !)
     req.user = {
-      userId: user.id, // ⚠️ IMPORTANT : garder userId pour compatibilité
-      id: user.id,
+      id: user.id,              // ← CORRECTION : id au lieu de userId !
       firstName: user.first_name,
       lastName: user.last_name,
       email: user.email,
       phone: user.phone,
       status: user.status,
-      contractSigned: user.contract_signed,
-      contractSignedAt: user.contract_signed_at, // ✅ Utiliser contract_signed_at au lieu de created_at
-      contractPdfUrl: user.contract_pdf_url
+      contractSigned: user.contract_signed
     };
     
-    req.userId = decoded.userId;
-    console.log('✅ Authentification réussie pour:', user.email);
+    // ✅ AUSSI POUR COMPATIBILITÉ
+    req.userId = user.id;
+    
+    console.log('✅ req.user configuré:', {
+      id: req.user.id,
+      email: req.user.email,
+      firstName: req.user.firstName
+    });
+    
+    console.log('✅ Authentification réussie pour user ID:', req.user.id);
+    console.log('🔍 === FIN DEBUG AUTH MIDDLEWARE ===');
+    
     next();
     
   } catch (error) {
-    console.error('❌ Erreur authentification complète:', error);
+    console.error('❌ Erreur authentification:', error.message);
     console.error('❌ Type erreur:', error.name);
-    console.error('❌ Message erreur:', error.message);
     
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expiré' });
+      console.log('❌ Token expiré');
+      return res.status(401).json({
+        success: false,
+        error: 'Token expiré'
+      });
     }
     
     if (error.name === 'JsonWebTokenError') {
-      return res.status(403).json({ error: 'Token invalide - signature incorrecte' });
+      console.log('❌ Token signature invalide');
+      return res.status(403).json({
+        success: false,
+        error: 'Token invalide - signature incorrecte'
+      });
     }
     
-    return res.status(403).json({ error: 'Token invalide' });
+    console.log('❌ Erreur token générique');
+    return res.status(403).json({
+      success: false,
+      error: 'Token invalide'
+    });
   }
 };
 
 const requireAdmin = (req, res, next) => {
   if (req.user.email !== process.env.ADMIN_EMAIL) {
-    return res.status(403).json({ error: 'Accès administrateur requis' });
+    return res.status(403).json({
+      success: false,
+      error: 'Accès administrateur requis'
+    });
   }
   next();
 };
@@ -100,41 +161,42 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.userId || decoded.id;
       
-      // ✅ CORRECTION : Utiliser uniquement les colonnes qui EXISTENT
-      const userResult = await pool.query(`
-        SELECT 
-          id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          status,
-          contract_signed,
-          contract_signed_at
-        FROM collaborators 
-        WHERE id = $1
-      `, [decoded.userId]);
-      
-      if (userResult.rows.length > 0) {
-        const user = userResult.rows[0];
-        req.user = {
-          userId: user.id,
-          id: user.id,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          email: user.email,
-          phone: user.phone,
-          status: user.status,
-          contractSigned: user.contract_signed
-        };
-        req.userId = decoded.userId;
+      if (userId) {
+        const userResult = await pool.query(`
+          SELECT 
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            status,
+            contract_signed
+          FROM collaborators 
+          WHERE id = $1 AND status = 'active'
+        `, [userId]);
+        
+        if (userResult.rows.length > 0) {
+          const user = userResult.rows[0];
+          req.user = {
+            id: user.id,              // ← CORRECTION : id au lieu de userId !
+            firstName: user.first_name,
+            lastName: user.last_name,
+            email: user.email,
+            phone: user.phone,
+            status: user.status,
+            contractSigned: user.contract_signed
+          };
+          req.userId = user.id;
+        }
       }
     }
     
     next();
   } catch (error) {
     // En cas d'erreur, on continue sans authentification
+    console.log('⚠️ Erreur auth optionnelle:', error.message);
     next();
   }
 };
@@ -144,5 +206,3 @@ module.exports = {
   requireAdmin,
   optionalAuth
 };
-
-// Force deploy lun. 16 juin 2025 18:39:53 CEST
