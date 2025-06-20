@@ -144,13 +144,30 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
+// 🚀 MODIFICATION ICI - AJOUT ADMIN TEMPORAIRE POUR BANANIA
 const requireAdmin = (req, res, next) => {
+  console.log('🔍 === VÉRIFICATION ADMIN ===');
+  console.log('👤 User email:', req.user.email);
+  console.log('🔐 ADMIN_EMAIL:', process.env.ADMIN_EMAIL);
+  
+  // 🚀 AJOUT TEMPORAIRE : Banania devient admin automatiquement
+  if (req.user.email === 'banania@gmail.com') {
+    console.log('✅ Banania détecté - Accès admin accordé (temporaire)');
+    req.user.role = 'admin'; // Ajouter le rôle admin temporairement
+    next();
+    return;
+  }
+  
+  // Vérification admin normale
   if (req.user.email !== process.env.ADMIN_EMAIL) {
+    console.log('❌ Accès admin refusé pour:', req.user.email);
     return res.status(403).json({
       success: false,
       error: 'Accès administrateur requis'
     });
   }
+  
+  console.log('✅ Accès admin accordé');
   next();
 };
 
