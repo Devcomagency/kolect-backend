@@ -144,16 +144,23 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// 🚀 MODIFICATION ICI - AJOUT ADMIN TEMPORAIRE POUR BANANIA
+// 🚀 MODIFICATION - ADMIN DEVCOM
 const requireAdmin = (req, res, next) => {
   console.log('🔍 === VÉRIFICATION ADMIN ===');
   console.log('👤 User email:', req.user.email);
-  console.log('🔐 ADMIN_EMAIL:', process.env.ADMIN_EMAIL);
   
-  // 🚀 AJOUT TEMPORAIRE : Banania devient admin automatiquement
+  // 🚀 ACCÈS ADMIN POUR DEVCOM
+  if (req.user.email === 'info@devcom.ch') {
+    console.log('✅ Devcom détecté - Accès admin accordé');
+    req.user.role = 'admin';
+    next();
+    return;
+  }
+  
+  // 🚀 AUSSI POUR BANANIA (backup)
   if (req.user.email === 'banania@gmail.com') {
-    console.log('✅ Banania détecté - Accès admin accordé (temporaire)');
-    req.user.role = 'admin'; // Ajouter le rôle admin temporairement
+    console.log('✅ Banania détecté - Accès admin accordé (backup)');
+    req.user.role = 'admin';
     next();
     return;
   }
