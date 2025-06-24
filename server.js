@@ -8,6 +8,7 @@ const scansRoutes = require('./routes/scans');
 const collaboratorsRoutes = require('./routes/collaborators');
 const statsRoutes = require('./routes/stats');
 const adminRoutes = require('./routes/admin');
+const emailRoutes = require('./routes/email');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,11 +28,12 @@ app.use('/api/scans', scansRoutes);
 app.use('/api/collaborators', collaboratorsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/email', emailRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Kolect Backend opérationnel 🌿',
     timestamp: new Date().toISOString(),
     availableRoutes: [
@@ -40,7 +42,8 @@ app.get('/api/health', (req, res) => {
       'POST /api/auth/login',
       'GET /api/collaborators/profile',
       'GET /api/scans/initiatives',
-      'POST /api/scans/submit'
+      'POST /api/scans/submit',
+      'POST /api/email/send-contract'
     ]
   });
 });
