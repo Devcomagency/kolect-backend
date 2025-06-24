@@ -15,7 +15,7 @@ async function uploadFile(file, destination) {
     
     await fs.writeFile(filePath, file.buffer);
     
-    return `${process.env.BASE_URL || 'http://localhost:3000'}/uploads/${fileName}`;
+      return `${process.env.BASE_URL || 'https://kolect-backend.onrender.com'}/uploads/${fileName}`;
     
   } catch (error) {
     console.error('Erreur upload fichier:', error);

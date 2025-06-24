@@ -30,7 +30,7 @@ async function saveFile(file) {
   const filePath = path.join(uploadDir, fileName);
   
   await fs.writeFile(filePath, file.buffer);
-  return `http://192.168.146.104:3000/uploads/${fileName}`;
+    return `https://kolect-backend.onrender.com/uploads/${fileName}`;
 }
 
 // Liste initiatives
