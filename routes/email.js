@@ -353,7 +353,7 @@ const generateDevcomContractHTML = (userInfo, finalSignature = null) => {
                     <div class="signature-label">Le Collaborateur</div>
                     <div class="signature-image">
                         ${finalSignature ? 
-                          `<img src="${finalSignature}" alt="Signature ${userInfo.firstName} ${userInfo.lastName}" style="width: 100%; height: 100%; object-fit: contain;" />` : 
+                          `<img src="${finalSignature}" alt="Signature ${userInfo.firstName} ${userInfo.lastName}" style="width: 50%; height: 50%; object-fit: contain;" />` : 
                           `<div style="color: #942626; font-weight: bold; border: 2px dashed #942626; height: 78px; display: flex; align-items: center; justify-content: center; font-style: italic;">Signature manquante</div>`
                         }
                     </div>
