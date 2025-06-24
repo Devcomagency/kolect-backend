@@ -32,3 +32,4 @@ Thumbs.db
 
 # Railway
 .railway/
+package-lock.json
