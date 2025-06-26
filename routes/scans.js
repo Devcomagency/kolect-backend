@@ -1,4 +1,4 @@
-const express = require('express');
+conconst express = require('express');
 const multer = require('multer');
 const crypto = require('crypto');
 const { authenticateToken } = require('../middleware/auth');
@@ -360,6 +360,288 @@ router.post('/submit-results', authenticateToken, async (req, res) => {
       error: 'Erreur enregistrement scan',
       details: error.message,
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 📊 STATISTIQUES PERSONNELLES UTILISATEUR - REQUIS PAR DASHBOARD
+router.get('/personal-stats', authenticateToken, async (req, res) => {
+  try {
+    console.log('📊 === STATISTIQUES PERSONNELLES DASHBOARD ===');
+    console.log('User ID:', req.user.id);
+
+    // 1️⃣ STATISTIQUES GLOBALES PERSONNELLES
+    const globalStatsQuery = `
+      SELECT 
+        COUNT(*) as total_scans,
+        COALESCE(SUM(total_signatures), 0) as total_signatures,
+        COALESCE(SUM(valid_signatures), 0) as valid_signatures,
+        COALESCE(SUM(rejected_signatures), 0) as rejected_signatures,
+        COALESCE(AVG(ocr_confidence), 0) as avg_confidence
+      FROM scans 
+      WHERE collaborator_id = $1
+    `;
+
+    const globalResult = await pool.query(globalStatsQuery, [req.user.id]);
+    const globalStats = globalResult.rows[0];
+
+    // 2️⃣ STATISTIQUES PAR INITIATIVE (PERSONNELLES)
+    const initiativeStatsQuery = `
+      SELECT 
+        i.name as initiative,
+        COUNT(s.id) as scan_count,
+        COALESCE(SUM(s.total_signatures), 0) as total_signatures,
+        COALESCE(SUM(s.valid_signatures), 0) as valid_signatures,
+        COALESCE(SUM(s.rejected_signatures), 0) as rejected_signatures
+      FROM initiatives i
+      LEFT JOIN scans s ON i.id = s.initiative_id AND s.collaborator_id = $1
+      WHERE i.is_active = true
+      GROUP BY i.id, i.name
+      ORDER BY total_signatures DESC
+    `;
+
+    const initiativeResult = await pool.query(initiativeStatsQuery, [req.user.id]);
+    const initiativeStats = initiativeResult.rows;
+
+    // 3️⃣ ÉVOLUTION MENSUELLE (ce mois vs mois dernier)
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    const evolutionQuery = `
+      SELECT 
+        COALESCE(SUM(CASE 
+          WHEN EXTRACT(MONTH FROM created_at) = $1 AND EXTRACT(YEAR FROM created_at) = $2 
+          THEN total_signatures ELSE 0 END), 0) as current_month,
+        COALESCE(SUM(CASE 
+          WHEN EXTRACT(MONTH FROM created_at) = $3 AND EXTRACT(YEAR FROM created_at) = $4 
+          THEN total_signatures ELSE 0 END), 0) as last_month
+      FROM scans 
+      WHERE collaborator_id = $5
+    `;
+
+    const evolutionResult = await pool.query(evolutionQuery, [
+      currentMonth, currentYear, lastMonth, lastMonthYear, req.user.id
+    ]);
+    
+    const evolution = evolutionResult.rows[0];
+    const currentMonthSigs = parseInt(evolution.current_month) || 0;
+    const lastMonthSigs = parseInt(evolution.last_month) || 0;
+    
+    // Calcul pourcentage d'évolution
+    let evolutionPercent = 0;
+    if (lastMonthSigs > 0) {
+      evolutionPercent = Math.round(((currentMonthSigs - lastMonthSigs) / lastMonthSigs) * 100);
+    } else if (currentMonthSigs > 0) {
+      evolutionPercent = 100; // Premier mois avec des signatures
+    }
+
+    console.log('📈 Évolution calculée:');
+    console.log(`  Ce mois: ${currentMonthSigs}`);
+    console.log(`  Mois dernier: ${lastMonthSigs}`);
+    console.log(`  Évolution: ${evolutionPercent}%`);
+
+    res.json({
+      success: true,
+      personal_stats: {
+        global: {
+          total_scans: parseInt(globalStats.total_scans) || 0,
+          total_signatures: parseInt(globalStats.total_signatures) || 0,
+          valid_signatures: parseInt(globalStats.valid_signatures) || 0,
+          rejected_signatures: parseInt(globalStats.rejected_signatures) || 0,
+          avg_confidence: parseFloat(globalStats.avg_confidence) || 0,
+          current_month_signatures: currentMonthSigs,
+          last_month_signatures: lastMonthSigs,
+          evolution_percent: evolutionPercent
+        },
+        by_initiative: initiativeStats.map(init => ({
+          initiative: init.initiative,
+          scan_count: parseInt(init.scan_count) || 0,
+          total_signatures: parseInt(init.total_signatures) || 0,
+          valid_signatures: parseInt(init.valid_signatures) || 0,
+          rejected_signatures: parseInt(init.rejected_signatures) || 0
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur stats personnelles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur récupération statistiques personnelles',
+      details: error.message
+    });
+  }
+});
+
+// 📅 HISTORIQUE PERSONNEL DÉTAILLÉ - REQUIS PAR DASHBOARD
+router.get('/personal-history', authenticateToken, async (req, res) => {
+  try {
+    console.log('📅 === HISTORIQUE PERSONNEL DASHBOARD ===');
+    console.log('User ID:', req.user.id);
+
+    // Historique quotidien des 30 derniers jours
+    const historyQuery = `
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as scan_count,
+        COALESCE(SUM(total_signatures), 0) as signatures,
+        COALESCE(SUM(valid_signatures), 0) as valid_signatures,
+        COALESCE(SUM(rejected_signatures), 0) as rejected_signatures,
+        COALESCE(AVG(ocr_confidence), 0) as avg_confidence
+      FROM scans 
+      WHERE collaborator_id = $1 
+        AND created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+    `;
+
+    const historyResult = await pool.query(historyQuery, [req.user.id]);
+    const dailyHistory = historyResult.rows.map(day => ({
+      date: day.date,
+      scan_count: parseInt(day.scan_count) || 0,
+      signatures: parseInt(day.signatures) || 0,
+      valid_signatures: parseInt(day.valid_signatures) || 0,
+      rejected_signatures: parseInt(day.rejected_signatures) || 0,
+      avg_confidence: parseFloat(day.avg_confidence) || 0
+    }));
+
+    // Statistiques générales de l'historique
+    const totalScans = dailyHistory.reduce((sum, day) => sum + day.scan_count, 0);
+    const totalSignatures = dailyHistory.reduce((sum, day) => sum + day.signatures, 0);
+    const avgDaily = totalScans > 0 ? Math.round(totalSignatures / dailyHistory.length) : 0;
+
+    console.log('📅 Historique généré:', {
+      days: dailyHistory.length,
+      totalScans,
+      totalSignatures,
+      avgDaily
+    });
+
+    res.json({
+      success: true,
+      personal_history: {
+        daily_history: dailyHistory,
+        summary: {
+          total_days: dailyHistory.length,
+          total_scans: totalScans,
+          total_signatures: totalSignatures,
+          avg_daily_signatures: avgDaily,
+          period: '30 derniers jours'
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur historique personnel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur récupération historique personnel',
+      details: error.message
+    });
+  }
+});
+
+// 📋 LISTE DÉTAILLÉE DES SCANS PERSONNELS - POUR PAGE HISTORIQUE
+router.get('/personal-list', authenticateToken, async (req, res) => {
+  try {
+    console.log('📋 === LISTE SCANS PERSONNELS ===');
+    
+    const { page = 1, limit = 20, initiative_id, date_from, date_to } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Construction de la requête avec filtres
+    let whereClause = 'WHERE s.collaborator_id = $1';
+    const params = [req.user.id];
+    let paramIndex = 2;
+
+    if (initiative_id) {
+      whereClause += ` AND s.initiative_id = $${paramIndex}`;
+      params.push(initiative_id);
+      paramIndex++;
+    }
+
+    if (date_from) {
+      whereClause += ` AND DATE(s.created_at) >= $${paramIndex}`;
+      params.push(date_from);
+      paramIndex++;
+    }
+
+    if (date_to) {
+      whereClause += ` AND DATE(s.created_at) <= $${paramIndex}`;
+      params.push(date_to);
+      paramIndex++;
+    }
+
+    const listQuery = `
+      SELECT 
+        s.id,
+        s.total_signatures,
+        s.valid_signatures,
+        s.rejected_signatures,
+        s.ocr_confidence,
+        s.status,
+        s.notes,
+        s.location,
+        s.created_at,
+        i.name as initiative_name,
+        i.color as initiative_color
+      FROM scans s
+      LEFT JOIN initiatives i ON s.initiative_id = i.id
+      ${whereClause}
+      ORDER BY s.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    params.push(limit, offset);
+
+    const listResult = await pool.query(listQuery, params);
+    const scans = listResult.rows.map(scan => ({
+      id: scan.id,
+      totalSignatures: scan.total_signatures,
+      validSignatures: scan.valid_signatures,
+      rejectedSignatures: scan.rejected_signatures,
+      confidence: scan.ocr_confidence,
+      status: scan.status,
+      notes: scan.notes,
+      location: scan.location,
+      createdAt: scan.created_at,
+      initiative: {
+        name: scan.initiative_name,
+        color: scan.initiative_color
+      }
+    }));
+
+    // Compter le total pour la pagination
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM scans s
+      ${whereClause}
+    `;
+
+    const countResult = await pool.query(countQuery, params.slice(0, -2));
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+      success: true,
+      scans: scans,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: (page * limit) < total,
+        hasPrev: page > 1
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur liste personnelle:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur récupération liste personnelle',
+      details: error.message
     });
   }
 });
