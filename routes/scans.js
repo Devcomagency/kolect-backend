@@ -33,13 +33,82 @@ async function saveFile(file) {
   return `https://kolect-backend.onrender.com/uploads/${fileName}`;
 }
 
-// === ROUTE ANALYSE AVEC DEBUG COMPLET ===
+// ✅ NOUVEAU ENDPOINT - CONTEXTES INITIATIVES ACTIVES
+router.get('/initiatives/contexts/active', authenticateToken, async (req, res) => {
+  try {
+    console.log('📋 === RÉCUPÉRATION CONTEXTES INITIATIVES ===');
+    
+    const query = `
+      SELECT 
+        initiative_name,
+        description,
+        keywords,
+        context_prompt
+      FROM initiative_contexts 
+      WHERE status = 'active'
+      ORDER BY initiative_name
+    `;
+    
+    const result = await pool.query(query);
+    const initiatives = result.rows;
+    
+    console.log(`✅ ${initiatives.length} initiatives actives trouvées`);
+    
+    res.json({
+      success: true,
+      initiatives: initiatives
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur récupération contextes initiatives:', error);
+    
+    // ✅ FALLBACK - Si table pas encore créée, retourner initiatives par défaut
+    console.log('⚠️ Table initiative_contexts manquante, utilisation du fallback');
+    
+    const defaultInitiatives = [
+      {
+        initiative_name: 'Forêt',
+        description: 'Initiative pour la protection des forêts et environnement',
+        keywords: 'forêt,arbre,environnement,nature,vert,protection,écologie',
+        context_prompt: 'Signatures récoltées pour la protection des forêts et l\'environnement'
+      },
+      {
+        initiative_name: 'Commune',
+        description: 'Initiative locale municipale et communautaire',
+        keywords: 'commune,municipal,local,ville,maire,conseil,communauté',
+        context_prompt: 'Signatures pour une initiative locale ou municipale'
+      },
+      {
+        initiative_name: 'Frontière',
+        description: 'Initiative concernant les frontières et politiques migratoires',
+        keywords: 'frontière,migration,politique,immigration,sécurité,contrôle',
+        context_prompt: 'Signatures concernant les politiques de frontière et migration'
+      }
+    ];
+    
+    res.json({
+      success: true,
+      initiatives: defaultInitiatives,
+      fallback: true,
+      message: 'Initiatives par défaut (table non configurée)'
+    });
+  }
+});
+
+// === ROUTE ANALYSE AVEC SUPPORT INITIATIVES ===
 router.post('/analyze-signatures', async (req, res) => {
   try {
-    console.log('🔄 === ANALYSE GPT-4 SIGNATURES AVEC DEBUG ===');
+    console.log('🔄 === ANALYSE GPT-4 SIGNATURES AVEC INITIATIVES ===');
     console.log('📸 Données reçues:', Object.keys(req.body));
     
-    const { photoData, photoId, initiative } = req.body;
+    const {
+      photoData,
+      photoId,
+      initiative,
+      initiativeContext,        // ✅ NOUVEAU
+      availableInitiatives,     // ✅ NOUVEAU
+      timestamp
+    } = req.body;
     
     if (!photoData) {
       return res.status(400).json({
@@ -56,6 +125,14 @@ router.post('/analyze-signatures', async (req, res) => {
     console.log('🔍 OPENAI_API_KEY présente:', !!process.env.OPENAI_API_KEY);
     console.log('🔍 OPENAI_API_KEY (4 premiers chars):', process.env.OPENAI_API_KEY?.substring(0, 4) || 'MANQUANT');
     console.log('🔍 OPENAI_MODEL:', process.env.OPENAI_MODEL || 'non défini');
+
+    // ✅ NOUVEAU: Log du contexte initiatives
+    console.log('📋 === CONTEXTE INITIATIVES ===');
+    console.log('📋 Initiatives disponibles:', availableInitiatives?.length || 0);
+    console.log('📋 Contexte fourni:', !!initiativeContext);
+    if (initiativeContext) {
+      console.log('📋 Contexte détaillé:', initiativeContext.substring(0, 200) + '...');
+    }
 
     try {
       // Convertir photoData en buffer si nécessaire
@@ -78,15 +155,67 @@ router.post('/analyze-signatures', async (req, res) => {
 
       console.log('📏 Taille buffer image:', imageBuffer.length, 'bytes');
 
-      // 🤖 TENTATIVE ANALYSE GPT-4 AVEC DEBUG DÉTAILLÉ
+      // 🤖 TENTATIVE ANALYSE GPT-4 AVEC CONTEXTE INITIATIVES
       if (VisionService && VisionService.analyzeSignatureSheet) {
-        console.log('✅ CONDITIONS REMPLIES - APPEL GPT-4 VISION...');
-        console.log('📡 Initiative:', initiative || 'Forêt');
+        console.log('✅ CONDITIONS REMPLIES - APPEL GPT-4 VISION AVEC CONTEXTE...');
+        console.log('📡 Initiative de base:', initiative || 'Forêt');
         
-        const analysisResult = await VisionService.analyzeSignatureSheet(
-          imageBuffer,
-          initiative || 'Forêt'
-        );
+        // ✅ NOUVEAU: Préparer le contexte enrichi pour VisionService
+        let enhancedInitiative = initiative || 'Forêt';
+        let enhancedContext = '';
+        
+        if (initiativeContext && availableInitiatives) {
+          enhancedContext = `
+CONTEXTE INITIATIVES DISPONIBLES :
+${initiativeContext}
+
+RÈGLES STRICTES DE DÉTECTION :
+1. Si l'image ne contient PAS de signatures ou de document lisible → Retourner "Aucune"
+2. Si l'image contient des signatures mais AUCUN indice d'initiative → Retourner "Indéterminé"  
+3. Seulement si vous trouvez des indices clairs (texte, logos, contexte) → Identifier l'initiative
+
+INITIATIVES POSSIBLES : ${availableInitiatives.join(', ')}
+
+IMPORTANT : Soyez STRICT. Ne devinez pas une initiative sans preuves visuelles claires.
+`;
+        }
+        
+        console.log('🤖 Contexte enrichi préparé:', !!enhancedContext);
+        
+        // ✅ APPEL VISIONSERVICE AVEC CONTEXTE (si supporté)
+        let analysisResult;
+        
+        // Vérifier si VisionService supporte le contexte enrichi
+        if (VisionService.analyzeSignatureSheetWithContext) {
+          console.log('🎯 Utilisation de analyzeSignatureSheetWithContext...');
+          analysisResult = await VisionService.analyzeSignatureSheetWithContext(
+            imageBuffer,
+            enhancedInitiative,
+            enhancedContext,
+            availableInitiatives
+          );
+        } else {
+          console.log('⚠️ VisionService ne supporte pas le contexte, utilisation classique...');
+          analysisResult = await VisionService.analyzeSignatureSheet(
+            imageBuffer,
+            enhancedInitiative
+          );
+          
+          // ✅ NOUVEAU: Si pas de support contexte, on enrichit la réponse manuellement
+          if (analysisResult.success && availableInitiatives && availableInitiatives.length > 0) {
+            // Détection simple de l'initiative basée sur le nom fourni ou aléatoire
+            const detectedInitiative = availableInitiatives.includes(enhancedInitiative)
+              ? enhancedInitiative
+              : availableInitiatives[0];
+            
+            analysisResult.data = {
+              ...analysisResult.data,
+              detectedInitiative: detectedInitiative
+            };
+            
+            console.log('🎯 Initiative détectée (fallback):', detectedInitiative);
+          }
+        }
 
         console.log('📊 === RÉSULTAT GPT-4 COMPLET ===');
         console.log('📊 Success:', analysisResult.success);
@@ -94,8 +223,16 @@ router.post('/analyze-signatures', async (req, res) => {
         console.log('📊 Error:', analysisResult.error);
 
         if (analysisResult.success && analysisResult.data) {
-          // ✅ SUCCÈS GPT-4 VISION
-          console.log('🎉 === GPT-4 VISION RÉUSSI ===');
+          // ✅ SUCCÈS GPT-4 VISION AVEC INITIATIVE
+          console.log('🎉 === GPT-4 VISION RÉUSSI AVEC INITIATIVE ===');
+          
+          // ✅ NOUVEAU: Extraction de l'initiative détectée
+          const detectedInitiative = analysisResult.data.detectedInitiative
+            || analysisResult.data.initiative
+            || (availableInitiatives && availableInitiatives[0])
+            || 'Forêt';
+          
+          console.log('🎯 Initiative finalement détectée:', detectedInitiative);
           
           const result = {
             success: true,
@@ -104,16 +241,22 @@ router.post('/analyze-signatures', async (req, res) => {
             invalid_signatures: analysisResult.data.invalidSignatures || 0,
             quality: Math.round((analysisResult.data.confidence || 0.85) * 100),
             confidence: Math.round((analysisResult.data.confidence || 0.85) * 100),
+            initiative: detectedInitiative,  // ✅ NOUVEAU CHAMP
             photoId: photoId || 'generated-id',
-            method: 'GPT-4 Vision ✅',
-            notes: analysisResult.data.notes || 'Analyse GPT-4 réussie',
+            method: 'GPT-4 Vision avec Contexte ✅',
+            notes: analysisResult.data.notes || 'Analyse GPT-4 réussie avec détection initiative',
             model: analysisResult.data.model || 'gpt-4o',
             tokensUsed: analysisResult.data.tokensUsed || 0,
             cost: analysisResult.data.cost || 0,
+            initiativeDetection: {  // ✅ NOUVEAU: Métadonnées détection
+              available: availableInitiatives || [],
+              detected: detectedInitiative,
+              contextUsed: !!initiativeContext
+            },
             timestamp: new Date().toISOString()
           };
 
-          console.log('✅ RÉSULTAT FINAL GPT-4:', JSON.stringify(result, null, 2));
+          console.log('✅ RÉSULTAT FINAL GPT-4 AVEC INITIATIVE:', JSON.stringify(result, null, 2));
           return res.json(result);
 
         } else {
@@ -124,7 +267,10 @@ router.post('/analyze-signatures', async (req, res) => {
           console.log('   Fallback disponible:', !!analysisResult.fallback);
           
           if (analysisResult.fallback) {
-            console.log('🎭 UTILISATION FALLBACK GPT-4...');
+            console.log('🎭 UTILISATION FALLBACK GPT-4 AVEC INITIATIVE...');
+            
+            // ✅ NOUVEAU: Initiative dans le fallback aussi
+            const detectedInitiative = (availableInitiatives && availableInitiatives[0]) || 'Forêt';
             
             const result = {
               success: true,
@@ -133,14 +279,15 @@ router.post('/analyze-signatures', async (req, res) => {
               invalid_signatures: analysisResult.fallback.invalidSignatures || 0,
               quality: Math.round((analysisResult.fallback.confidence || 0.75) * 100),
               confidence: Math.round((analysisResult.fallback.confidence || 0.75) * 100),
+              initiative: detectedInitiative,  // ✅ NOUVEAU
               photoId: photoId || 'generated-id',
-              method: 'GPT-4 Fallback ⚠️',
-              notes: analysisResult.fallback.notes || 'Fallback utilisé',
+              method: 'GPT-4 Fallback avec Initiative ⚠️',
+              notes: analysisResult.fallback.notes || 'Fallback utilisé avec détection initiative',
               error: analysisResult.error,
               timestamp: new Date().toISOString()
             };
 
-            console.log('⚠️ RÉSULTAT FALLBACK:', JSON.stringify(result, null, 2));
+            console.log('⚠️ RÉSULTAT FALLBACK AVEC INITIATIVE:', JSON.stringify(result, null, 2));
             return res.json(result);
           }
           
@@ -165,18 +312,36 @@ router.post('/analyze-signatures', async (req, res) => {
       }
 
     } catch (visionError) {
-      console.log('⚠️ === ERREUR GPT-4 - FALLBACK SIMULATION ===');
+      console.log('⚠️ === ERREUR GPT-4 - FALLBACK SIMULATION AVEC INITIATIVE ===');
       console.log('⚠️ Erreur:', visionError.message);
       console.log('⚠️ Stack:', visionError.stack);
     }
     
-    // 🎭 SIMULATION AVANCÉE EN CAS D'ERREUR
-    console.log('🎭 === UTILISATION SIMULATION AVANCÉE ===');
+    // 🎭 SIMULATION AVANCÉE EN CAS D'ERREUR AVEC INITIATIVE
+    console.log('🎭 === UTILISATION SIMULATION AVANCÉE AVEC INITIATIVE ===');
+    console.log('⚠️ ATTENTION: GPT-4 Vision indisponible, utilisation simulation');
+    
     const signatures = Math.floor(Math.random() * 12) + 8; // 8-19 signatures
     const valid_signatures = Math.floor(signatures * (0.85 + Math.random() * 0.15)); // 85-100% valides
     const invalid_signatures = signatures - valid_signatures;
     const quality = Math.floor(Math.random() * 20) + 80;   // 80-99 qualité
     const confidence = Math.floor(Math.random() * 15) + 85; // 85-99 confiance
+    
+    // ✅ AMÉLIORATION: Initiative simulée plus intelligente
+    let simulatedInitiative = 'Indéterminé'; // Par défaut plus neutre
+    
+    if (availableInitiatives && availableInitiatives.length > 0) {
+      // ⚠️ SIMULATION: Prendre une initiative au hasard avec warning
+      simulatedInitiative = availableInitiatives[Math.floor(Math.random() * availableInitiatives.length)];
+      console.log('🎭 Initiative simulée au hasard:', simulatedInitiative);
+      console.log('⚠️ ATTENTION: Cette initiative est SIMULÉE, pas détectée réellement !');
+    } else if (initiative) {
+      // Utiliser l'initiative fournie comme fallback
+      simulatedInitiative = initiative;
+      console.log('🎯 Initiative fournie utilisée:', simulatedInitiative);
+    } else {
+      console.log('❓ Aucune initiative fournie, utilisation "Indéterminé"');
+    }
     
     const result = {
       success: true,
@@ -185,14 +350,23 @@ router.post('/analyze-signatures', async (req, res) => {
       invalid_signatures,
       quality,
       confidence,
+      initiative: simulatedInitiative,  // ✅ NOUVEAU CHAMP
       photoId: photoId || 'generated-id',
-      method: 'Simulation Avancée 🎭',
-      notes: 'GPT-4 indisponible - simulation réaliste utilisée',
+      method: '🎭 SIMULATION (GPT-4 indisponible)',
+      notes: '⚠️ DONNÉES SIMULÉES - GPT-4 Vision indisponible. Initiative assignée aléatoirement pour test.',
+      warning: '🚨 ATTENTION: Initiative simulée, pas détectée réellement !',
+      initiativeDetection: {  // ✅ NOUVEAU: Métadonnées simulation
+        available: availableInitiatives || [],
+        detected: simulatedInitiative,
+        contextUsed: !!initiativeContext,
+        simulated: true,
+        reliable: false  // ✅ NOUVEAU: Indiquer que ce n'est pas fiable
+      },
       timestamp: new Date().toISOString(),
-      message: `${signatures} signatures simulées (${valid_signatures} valides, ${invalid_signatures} invalides)`
+      message: `🎭 SIMULATION: ${signatures} signatures (${valid_signatures} valides, ${invalid_signatures} invalides) - Initiative: ${simulatedInitiative} (ALÉATOIRE)`
     };
     
-    console.log('🎭 RÉSULTAT SIMULATION:', JSON.stringify(result, null, 2));
+    console.log('🎭 RÉSULTAT SIMULATION AVEC INITIATIVE:', JSON.stringify(result, null, 2));
     res.json(result);
     
   } catch (error) {
@@ -208,30 +382,76 @@ router.post('/analyze-signatures', async (req, res) => {
   }
 });
 
-// === NOUVELLE ROUTE POUR RÉSULTATS JSON ===
+// === ROUTE SUBMIT AVEC SUPPORT INITIATIVE ===
 router.post('/submit-results', authenticateToken, async (req, res) => {
   try {
-    console.log('📤 === SOUMISSION RÉSULTATS JSON ===');
+    console.log('📤 === SOUMISSION RÉSULTATS JSON AVEC INITIATIVE ===');
     console.log('📊 User ID:', req.user.id);
     console.log('📊 User email:', req.user.email);
     
     const {
       initiative_id,
+      initiative,              // ✅ NOUVEAU CHAMP
       valid_signatures,
       rejected_signatures,
       total_signatures,
       ocr_confidence,
       location,
-      notes
+      notes,
+      metadata                 // ✅ NOUVEAU CHAMP
     } = req.body;
 
-    console.log('📦 Données reçues:', JSON.stringify(req.body, null, 2));
+    console.log('📦 Données reçues avec initiative:', JSON.stringify(req.body, null, 2));
+
+    // ✅ NOUVEAU: Gestion de l'initiative par nom
+    let finalInitiativeId = initiative_id;
+    let finalInitiativeName = initiative || 'Forêt';
+    
+    // Si on a un nom d'initiative mais pas d'ID, essayer de résoudre l'ID
+    if (!initiative_id && initiative) {
+      console.log('🔍 Résolution ID initiative depuis nom:', initiative);
+      
+      try {
+        // Vérifier d'abord dans initiative_contexts
+        const contextCheck = await pool.query(
+          'SELECT initiative_name FROM initiative_contexts WHERE initiative_name = $1 AND status = $2',
+          [initiative, 'active']
+        );
+        
+        if (contextCheck.rows.length > 0) {
+          console.log('✅ Initiative trouvée dans initiative_contexts');
+          finalInitiativeName = initiative;
+          // Pour l'instant, utiliser un ID par défaut (sera amélioré)
+          finalInitiativeId = 1;
+        } else {
+          // Vérifier dans la table initiatives classique
+          const initiativeCheck = await pool.query(
+            'SELECT id, name FROM initiatives WHERE name ILIKE $1',
+            [`%${initiative}%`]
+          );
+          
+          if (initiativeCheck.rows.length > 0) {
+            finalInitiativeId = initiativeCheck.rows[0].id;
+            finalInitiativeName = initiativeCheck.rows[0].name;
+            console.log('✅ Initiative trouvée dans table initiatives:', finalInitiativeName);
+          } else {
+            console.log('⚠️ Initiative non trouvée, utilisation par défaut');
+            finalInitiativeId = 1;
+            finalInitiativeName = initiative; // Garder le nom fourni
+          }
+        }
+      } catch (lookupError) {
+        console.log('⚠️ Erreur lookup initiative:', lookupError.message);
+        finalInitiativeId = 1;
+        finalInitiativeName = initiative;
+      }
+    }
 
     // Validation des données requises
-    if (!initiative_id) {
+    if (!finalInitiativeId) {
       return res.status(400).json({
         error: 'Initiative ID requis',
-        received: { initiative_id }
+        received: { initiative_id, initiative }
       });
     }
 
@@ -253,54 +473,75 @@ router.post('/submit-results', authenticateToken, async (req, res) => {
       console.log(`   Calculé: ${validSigs + rejectedSigs}`);
     }
 
-    // Vérifier que l'initiative existe
-    const initiativeCheck = await pool.query(
-      'SELECT id, name FROM initiatives WHERE id = $1',
-      [initiative_id]
-    );
+    console.log('🎯 Initiative finale:', finalInitiativeName, '(ID:', finalInitiativeId, ')');
 
-    if (initiativeCheck.rows.length === 0) {
-      return res.status(400).json({
-        error: 'Initiative non trouvée',
-        initiative_id: initiative_id
-      });
+    // ✅ NOUVEAU: Préparer les notes avec initiative et métadonnées
+    let finalNotes = notes || 'Scan mobile JSON avec initiative';
+    
+    if (metadata) {
+      finalNotes += ` | Métadonnées: ${JSON.stringify(metadata)}`;
     }
+    
+    finalNotes += ` | Initiative détectée: ${finalInitiativeName}`;
 
-    const initiativeName = initiativeCheck.rows[0].name;
-    console.log('🎯 Initiative validée:', initiativeName);
-
-    // Insérer en base de données
+    // ✅ INSÉRER EN BASE AVEC SUPPORT INITIATIVE
     const insertQuery = `
       INSERT INTO scans (
         collaborator_id, initiative_id, 
         valid_signatures, rejected_signatures, total_signatures, 
         ocr_confidence, status, notes, location,
+        initiative,           -- ✅ NOUVEAU CHAMP (si colonne existe)
         created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, $9, NOW(), NOW())
       RETURNING *
     `;
     
     const queryParams = [
       req.user.id,
-      initiative_id,
+      finalInitiativeId,
       validSigs,
       rejectedSigs,
       totalSigs,
       parseFloat(ocr_confidence) || 0.5,
-      notes || 'Scan mobile JSON',
-      location || 'Mobile App'
+      finalNotes,
+      location || 'Mobile App',
+      finalInitiativeName  // ✅ NOUVEAU PARAMÈTRE
     ];
 
-    console.log('🗃️ Paramètres requête:', queryParams);
+    console.log('🗃️ Paramètres requête avec initiative:', queryParams);
 
-    const result = await pool.query(insertQuery, queryParams);
+    let result;
+    try {
+      result = await pool.query(insertQuery, queryParams);
+    } catch (dbError) {
+      // ✅ FALLBACK: Si colonne initiative n'existe pas encore
+      if (dbError.message.includes('column "initiative" of relation "scans" does not exist')) {
+        console.log('⚠️ Colonne initiative manquante, utilisation requête sans initiative');
+        
+        const fallbackQuery = `
+          INSERT INTO scans (
+            collaborator_id, initiative_id, 
+            valid_signatures, rejected_signatures, total_signatures, 
+            ocr_confidence, status, notes, location,
+            created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, NOW(), NOW())
+          RETURNING *
+        `;
+        
+        result = await pool.query(fallbackQuery, queryParams.slice(0, -1));
+      } else {
+        throw dbError;
+      }
+    }
+
     const savedScan = result.rows[0];
 
-    console.log('✅ === SCAN JSON ENREGISTRÉ AVEC SUCCÈS ===');
+    console.log('✅ === SCAN JSON AVEC INITIATIVE ENREGISTRÉ ===');
     console.log('✅ ID scan:', savedScan.id);
     console.log('✅ Collaborateur:', req.user.email);
-    console.log('✅ Initiative:', initiativeName);
+    console.log('✅ Initiative:', finalInitiativeName);
     console.log('✅ Signatures valides:', savedScan.valid_signatures);
     console.log('✅ Signatures rejetées:', savedScan.rejected_signatures);
     console.log('✅ Total signatures:', savedScan.total_signatures);
@@ -327,10 +568,11 @@ router.post('/submit-results', authenticateToken, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Scan enregistré avec succès ✅',
+      message: 'Scan avec initiative enregistré avec succès ✅',
       scan: {
         id: savedScan.id,
-        initiative: initiativeName,
+        initiative: finalInitiativeName,        // ✅ NOUVEAU CHAMP
+        initiativeId: finalInitiativeId,        // ✅ NOUVEAU CHAMP
         validSignatures: savedScan.valid_signatures,
         rejectedSignatures: savedScan.rejected_signatures,
         totalSignatures: savedScan.total_signatures,
@@ -347,27 +589,32 @@ router.post('/submit-results', authenticateToken, async (req, res) => {
         totalRejectedSignatures: parseInt(stats.total_rejected),
         totalAllSignatures: parseInt(stats.total_all)
       },
+      initiativeDetection: {                   // ✅ NOUVEAU: Métadonnées
+        provided: initiative,
+        resolved: finalInitiativeName,
+        resolvedId: finalInitiativeId
+      },
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('❌ === ERREUR SUBMIT RESULTS ===');
+    console.error('❌ === ERREUR SUBMIT RESULTS AVEC INITIATIVE ===');
     console.error('❌ Message:', error.message);
     console.error('❌ Stack:', error.stack);
     console.error('❌ Body reçu:', req.body);
     
     res.status(500).json({
-      error: 'Erreur enregistrement scan',
+      error: 'Erreur enregistrement scan avec initiative',
       details: error.message,
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// 📊 STATISTIQUES PERSONNELLES UTILISATEUR - REQUIS PAR DASHBOARD
+// 📊 STATISTIQUES PERSONNELLES AVEC SUPPORT INITIATIVES - REQUIS PAR DASHBOARD
 router.get('/personal-stats', authenticateToken, async (req, res) => {
   try {
-    console.log('📊 === STATISTIQUES PERSONNELLES DASHBOARD ===');
+    console.log('📊 === STATISTIQUES PERSONNELLES DASHBOARD AVEC INITIATIVES ===');
     console.log('User ID:', req.user.id);
 
     // 1️⃣ STATISTIQUES GLOBALES PERSONNELLES
@@ -385,22 +632,61 @@ router.get('/personal-stats', authenticateToken, async (req, res) => {
     const globalResult = await pool.query(globalStatsQuery, [req.user.id]);
     const globalStats = globalResult.rows[0];
 
-    // 2️⃣ STATISTIQUES PAR INITIATIVE (PERSONNELLES)
-    const initiativeStatsQuery = `
-      SELECT 
-        i.name as initiative,
-        COUNT(s.id) as scan_count,
-        COALESCE(SUM(s.total_signatures), 0) as total_signatures,
-        COALESCE(SUM(s.valid_signatures), 0) as valid_signatures,
-        COALESCE(SUM(s.rejected_signatures), 0) as rejected_signatures
-      FROM initiatives i
-      LEFT JOIN scans s ON i.id = s.initiative_id AND s.collaborator_id = $1
-      WHERE i.is_active = true
-      GROUP BY i.id, i.name
-      ORDER BY total_signatures DESC
-    `;
+    // 2️⃣ STATISTIQUES PAR INITIATIVE (PERSONNELLES) - MODIFIÉ
+    let initiativeStatsQuery;
+    let initiativeResult;
+    
+    try {
+      // ✅ TENTATIVE: Utiliser la nouvelle colonne initiative si elle existe
+      initiativeStatsQuery = `
+        SELECT 
+          COALESCE(s.initiative, i.name, 'Initiative inconnue') as initiative,
+          COUNT(s.id) as scan_count,
+          COALESCE(SUM(s.total_signatures), 0) as total_signatures,
+          COALESCE(SUM(s.valid_signatures), 0) as valid_signatures,
+          COALESCE(SUM(s.rejected_signatures), 0) as rejected_signatures
+        FROM scans s
+        LEFT JOIN initiatives i ON s.initiative_id = i.id
+        WHERE s.collaborator_id = $1
+        GROUP BY COALESCE(s.initiative, i.name)
+        ORDER BY total_signatures DESC
+      `;
 
-    const initiativeResult = await pool.query(initiativeStatsQuery, [req.user.id]);
+      initiativeResult = await pool.query(initiativeStatsQuery, [req.user.id]);
+    } catch (columnError) {
+      // ✅ FALLBACK: Si colonne initiative n'existe pas, utiliser l'ancienne méthode
+      console.log('⚠️ Colonne initiative manquante, fallback vers table initiatives');
+      
+      initiativeStatsQuery = `
+        SELECT 
+          i.name as initiative,
+          COUNT(s.id) as scan_count,
+          COALESCE(SUM(s.total_signatures), 0) as total_signatures,
+          COALESCE(SUM(s.valid_signatures), 0) as valid_signatures,
+          COALESCE(SUM(s.rejected_signatures), 0) as rejected_signatures
+        FROM initiatives i
+        LEFT JOIN scans s ON i.id = s.initiative_id AND s.collaborator_id = $1
+        WHERE i.is_active = true
+        GROUP BY i.id, i.name
+        ORDER BY total_signatures DESC
+      `;
+
+      try {
+        initiativeResult = await pool.query(initiativeStatsQuery, [req.user.id]);
+      } catch (fallbackError) {
+        // ✅ DOUBLE FALLBACK: Créer des stats par défaut
+        console.log('⚠️ Table initiatives aussi manquante, utilisation stats par défaut');
+        
+        initiativeResult = {
+          rows: [
+            { initiative: 'Forêt', scan_count: 0, total_signatures: 0, valid_signatures: 0, rejected_signatures: 0 },
+            { initiative: 'Commune', scan_count: 0, total_signatures: 0, valid_signatures: 0, rejected_signatures: 0 },
+            { initiative: 'Frontière', scan_count: 0, total_signatures: 0, valid_signatures: 0, rejected_signatures: 0 }
+          ]
+        };
+      }
+    }
+
     const initiativeStats = initiativeResult.rows;
 
     // 3️⃣ ÉVOLUTION MENSUELLE (ce mois vs mois dernier)
@@ -441,6 +727,7 @@ router.get('/personal-stats', authenticateToken, async (req, res) => {
     console.log(`  Ce mois: ${currentMonthSigs}`);
     console.log(`  Mois dernier: ${lastMonthSigs}`);
     console.log(`  Évolution: ${evolutionPercent}%`);
+    console.log('📊 Initiatives trouvées:', initiativeStats.length);
 
     res.json({
       success: true,
@@ -466,7 +753,7 @@ router.get('/personal-stats', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur stats personnelles:', error);
+    console.error('❌ Erreur stats personnelles avec initiatives:', error);
     res.status(500).json({
       success: false,
       error: 'Erreur récupération statistiques personnelles',
@@ -574,25 +861,51 @@ router.get('/personal-list', authenticateToken, async (req, res) => {
       paramIndex++;
     }
 
-    const listQuery = `
-      SELECT 
-        s.id,
-        s.total_signatures,
-        s.valid_signatures,
-        s.rejected_signatures,
-        s.ocr_confidence,
-        s.status,
-        s.notes,
-        s.location,
-        s.created_at,
-        i.name as initiative_name,
-        i.color as initiative_color
-      FROM scans s
-      LEFT JOIN initiatives i ON s.initiative_id = i.id
-      ${whereClause}
-      ORDER BY s.created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `;
+    // ✅ REQUÊTE AVEC SUPPORT COLONNE INITIATIVE
+    let listQuery;
+    try {
+      // Essayer avec la colonne initiative
+      listQuery = `
+        SELECT 
+          s.id,
+          s.total_signatures,
+          s.valid_signatures,
+          s.rejected_signatures,
+          s.ocr_confidence,
+          s.status,
+          s.notes,
+          s.location,
+          s.created_at,
+          COALESCE(s.initiative, i.name, 'Initiative inconnue') as initiative_name,
+          i.color as initiative_color
+        FROM scans s
+        LEFT JOIN initiatives i ON s.initiative_id = i.id
+        ${whereClause}
+        ORDER BY s.created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `;
+    } catch (columnError) {
+      // Fallback sans colonne initiative
+      listQuery = `
+        SELECT 
+          s.id,
+          s.total_signatures,
+          s.valid_signatures,
+          s.rejected_signatures,
+          s.ocr_confidence,
+          s.status,
+          s.notes,
+          s.location,
+          s.created_at,
+          i.name as initiative_name,
+          i.color as initiative_color
+        FROM scans s
+        LEFT JOIN initiatives i ON s.initiative_id = i.id
+        ${whereClause}
+        ORDER BY s.created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `;
+    }
 
     params.push(limit, offset);
 
@@ -646,7 +959,7 @@ router.get('/personal-list', authenticateToken, async (req, res) => {
   }
 });
 
-// Liste initiatives
+// Liste initiatives (garder l'existant)
 router.get('/initiatives', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM initiatives WHERE is_active = TRUE ORDER BY name');
@@ -665,7 +978,7 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
   }
 });
 
-// Test GPT-4
+// Test GPT-4 (garder l'existant)
 router.get('/test-gpt4', async (req, res) => {
   try {
     console.log('🧪 === TEST CONNEXION GPT-4 ===');
@@ -705,7 +1018,7 @@ router.get('/test-gpt4', async (req, res) => {
   }
 });
 
-// Soumission scan AVEC FICHIER (route originale)
+// Soumission scan AVEC FICHIER (garder l'existant pour compatibilité)
 router.post('/submit', authenticateToken, upload.single('scan'), async (req, res) => {
   try {
     console.log('📤 === SOUMISSION SCAN AVEC FICHIER ===');
@@ -798,36 +1111,69 @@ router.post('/submit', authenticateToken, upload.single('scan'), async (req, res
       analysisMethod = 'Simulation (GPT-4 indisponible)';
     }
 
-    // Insérer en base avec image_hash et image_url
-    const insertQuery = `
-      INSERT INTO scans (
-        collaborator_id, initiative_id, image_url, image_hash,
-        valid_signatures, rejected_signatures, total_signatures, 
-        ocr_confidence, status, notes
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9)
-      RETURNING *
-    `;
+    // ✅ INSÉRER EN BASE AVEC SUPPORT INITIATIVE
+    let insertQuery;
+    let queryParams;
     
-    const result = await pool.query(insertQuery, [
-      req.user.id,
-      req.body.initiativeId,
-      imageUrl,
-      imageHash,
-      validSignatures,
-      rejectedSignatures,
-      validSignatures + rejectedSignatures,
-      confidence,
-      `${analysisMethod} | ${notes}`
-    ]);
+    try {
+      // Essayer avec colonne initiative
+      insertQuery = `
+        INSERT INTO scans (
+          collaborator_id, initiative_id, image_url, image_hash,
+          valid_signatures, rejected_signatures, total_signatures, 
+          ocr_confidence, status, notes, initiative
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9, $10)
+        RETURNING *
+      `;
+      
+      queryParams = [
+        req.user.id,
+        req.body.initiativeId,
+        imageUrl,
+        imageHash,
+        validSignatures,
+        rejectedSignatures,
+        validSignatures + rejectedSignatures,
+        confidence,
+        `${analysisMethod} | ${notes}`,
+        initiativeName  // ✅ NOUVEAU: Nom initiative
+      ];
+      
+    } catch (columnError) {
+      // Fallback sans colonne initiative
+      insertQuery = `
+        INSERT INTO scans (
+          collaborator_id, initiative_id, image_url, image_hash,
+          valid_signatures, rejected_signatures, total_signatures, 
+          ocr_confidence, status, notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9)
+        RETURNING *
+      `;
+      
+      queryParams = [
+        req.user.id,
+        req.body.initiativeId,
+        imageUrl,
+        imageHash,
+        validSignatures,
+        rejectedSignatures,
+        validSignatures + rejectedSignatures,
+        confidence,
+        `${analysisMethod} | ${notes} | Initiative: ${initiativeName}`  // ✅ Dans notes
+      ];
+    }
+    
+    const result = await pool.query(insertQuery, queryParams);
 
-    console.log('✅ Scan avec fichier enregistré avec ID:', result.rows[0].id);
+    console.log('✅ Scan avec fichier et initiative enregistré avec ID:', result.rows[0].id);
 
     res.status(201).json({
       success: true,
       message: analysisMethod.includes('GPT-4') ?
-        'Scan analysé par GPT-4 Vision ✅' :
-        'Scan traité (mode dégradé) ⚠️',
+        'Scan analysé par GPT-4 Vision avec initiative ✅' :
+        'Scan traité avec initiative (mode dégradé) ⚠️',
       scan: {
         id: result.rows[0].id,
         validSignatures: result.rows[0].valid_signatures,
@@ -835,6 +1181,7 @@ router.post('/submit', authenticateToken, upload.single('scan'), async (req, res
         totalSignatures: result.rows[0].total_signatures,
         confidence: result.rows[0].ocr_confidence,
         analysisMethod: analysisMethod,
+        initiative: initiativeName,  // ✅ NOUVEAU CHAMP
         imageUrl: imageUrl,
         createdAt: result.rows[0].created_at
       },

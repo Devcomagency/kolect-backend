@@ -9,6 +9,7 @@ const collaboratorsRoutes = require('./routes/collaborators');
 const statsRoutes = require('./routes/stats');
 const adminRoutes = require('./routes/admin');
 const emailRoutes = require('./routes/email');
+const initiativesRoutes = require('./routes/initiatives'); // ✅ NOUVEAU
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +30,7 @@ app.use('/api/collaborators', collaboratorsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/initiatives', initiativesRoutes); // ✅ NOUVEAU
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -41,6 +43,7 @@ app.get('/api/health', (req, res) => {
       'POST /api/auth/register',
       'POST /api/auth/login',
       'GET /api/collaborators/profile',
+      'GET /api/initiatives/contexts/active', // ✅ NOUVEAU
       'GET /api/scans/initiatives',
       'POST /api/scans/submit',
       'POST /api/email/send-contract'
