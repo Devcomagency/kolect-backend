@@ -7,7 +7,9 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate": "node migrations/migrate.js",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "axios": "^1.6.2",
@@ -27,7 +29,11 @@
     "pg": "^8.11.3",
     "puppeteer-core": "^24.10.2",
     "sharp": "^0.34.2",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "expo-dev-client": "~5.2.1",
+    "expo": "~53.0.12",
+    "react": "19.0.0",
+    "react-native": "0.79.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

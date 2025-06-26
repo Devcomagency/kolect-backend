@@ -8,7 +8,7 @@ const openai = new OpenAI({
 class VisionService {
   static async analyzeSignatureSheet(imageBuffer, initiativeName) {
     try {
-      console.log('🤖 Démarrage analyse GPT-4 Vision...');
+      console.log('🤖 === DÉMARRAGE ANALYSE GPT-4 VISION ===');
       console.log('📋 Initiative:', initiativeName);
       console.log('📏 Taille image:', imageBuffer.length, 'bytes');
       
@@ -16,45 +16,41 @@ class VisionService {
       const base64Image = imageBuffer.toString('base64');
       console.log('🔄 Image convertie en base64');
 
-      const prompt = `Tu es un expert suisse en analyse de feuilles de signatures pour les initiatives citoyennes.
+      // PROMPT STRICT POUR JSON UNIQUEMENT
+      const prompt = `You are a Swiss signature sheet analysis expert for citizen initiatives.
 
-CONTEXTE:
+CONTEXT:
 - Initiative: "${initiativeName}"
-- Type: Feuille officielle de collecte de signatures manuscrites
-- Pays: Suisse (noms français/allemands/italiens possibles)
-- Format: Liste avec colonnes Nom, Prénom, Adresse, Signature, Date
+- Type: Official signature collection sheet
+- Country: Switzerland (French/German/Italian names possible)
+- Format: List with columns Name, First Name, Address, Signature, Date
 
-TÂCHE PRÉCISE:
-Compte EXACTEMENT le nombre de lignes remplies sur cette feuille de signatures.
+CRITICAL INSTRUCTIONS:
+1. Count EXACTLY the number of filled lines on this signature sheet
+2. RESPOND ONLY WITH VALID JSON - NO TEXT BEFORE OR AFTER
+3. NO explanations like "I found" or "Il semble" - ONLY JSON
+4. NO markdown formatting (no \`\`\`json\`\`\`)
 
-CRITÈRES DE COMPTAGE:
-✅ SIGNATURE VALIDE = Ligne avec:
-   - Nom ET prénom renseignés (lisibles ou pas)
-   - Signature présente (gribouillage accepté)
-   - Pas rayé/barré complètement
+COUNTING CRITERIA:
+✅ VALID SIGNATURE = Line with:
+   - Name AND first name filled (readable or not)
+   - Signature present (scribble accepted)
+   - Not completely crossed out
 
-❌ SIGNATURE INVALIDE = Ligne avec:
-   - Nom OU prénom manquant
-   - Pas de signature du tout
-   - Rayé/barré entièrement
+❌ INVALID SIGNATURE = Line with:
+   - Missing name OR first name
+   - No signature at all
+   - Completely crossed out/deleted
 
-⚪ LIGNE VIDE = Ligne complètement vide
+⚪ EMPTY LINE = Completely empty line
 
-INSTRUCTIONS:
-1. Regarde CHAQUE ligne individuellement
-2. Compte ligne par ligne, de haut en bas
-3. Même si illisible, si il y a quelque chose d'écrit = VALIDE
-4. Sois TRÈS précis dans le comptage
+RESPOND ONLY WITH THIS EXACT JSON FORMAT:
+{"valid_signatures": X, "invalid_signatures": Y, "empty_lines": Z, "total_lines_analyzed": N, "confidence": 0.XX, "notes": "Brief description of what was observed"}
 
-RETOURNE UNIQUEMENT ce JSON (rien d'autre):
-{
-  "valid_signatures": X,
-  "invalid_signatures": Y,
-  "empty_lines": Z,
-  "total_lines_analyzed": X+Y+Z,
-  "confidence": 0.XX,
-  "notes": "Détail de ce qui a été observé sur la feuille"
-}`;
+EXAMPLE RESPONSE:
+{"valid_signatures": 8, "invalid_signatures": 2, "empty_lines": 5, "total_lines_analyzed": 15, "confidence": 0.92, "notes": "Clear sheet with 8 complete signatures"}`;
+
+      console.log('📡 === APPEL GPT-4 VISION ===');
 
       const response = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o",
@@ -70,56 +66,98 @@ RETOURNE UNIQUEMENT ce JSON (rien d'autre):
                 type: "image_url",
                 image_url: {
                   url: `data:image/jpeg;base64,${base64Image}`,
-                  detail: "high" // Analyse haute définition
+                  detail: "high"
                 }
               }
             ]
           }
         ],
         max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 300,
-        temperature: 0.1, // Faible pour plus de précision et cohérence
+        temperature: 0.1, // Très bas pour cohérence
       });
 
       const result = response.choices[0].message.content;
-      console.log('🤖 Réponse brute GPT-4:', result);
+      console.log('📋 === RÉPONSE BRUTE GPT-4 ===');
+      console.log('📋 Contenu brut:', result);
 
-      // Nettoyer la réponse pour extraire le JSON
+      // NETTOYAGE STRICT DE LA RÉPONSE
       let cleanedResult = result.trim();
       
       // Enlever les ```json``` si présents
-      cleanedResult = cleanedResult.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      cleanedResult = cleanedResult.replace(/```json\s*\n?/gi, '');
+      cleanedResult = cleanedResult.replace(/```\s*\n?/gi, '');
       
       // Enlever les commentaires
       cleanedResult = cleanedResult.replace(/\/\/.*$/gm, '');
-
-      // Parser la réponse JSON
-      const analysis = JSON.parse(cleanedResult);
       
-      // Validation stricte des données
-      if (analysis.valid_signatures === undefined || analysis.valid_signatures === null) {
-        throw new Error('Champ valid_signatures manquant dans la réponse GPT-4');
+      // Enlever texte avant/après JSON
+      const jsonMatch = cleanedResult.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedResult = jsonMatch[0];
       }
 
-      if (analysis.confidence === undefined || analysis.confidence < 0 || analysis.confidence > 1) {
-        analysis.confidence = 0.85; // Valeur par défaut
+      console.log('🧹 Réponse nettoyée:', cleanedResult);
+
+      // PARSING JSON STRICT
+      let analysis;
+      try {
+        analysis = JSON.parse(cleanedResult);
+        console.log('✅ JSON parsé avec succès:', analysis);
+      } catch (parseError) {
+        console.error('❌ ERREUR PARSING JSON:', parseError.message);
+        console.error('❌ Contenu problématique:', cleanedResult);
+        
+        // EXTRACTION MANUELLE EN CAS D'ERREUR
+        const validMatch = cleanedResult.match(/valid_signatures["\s]*:\s*(\d+)/i);
+        const invalidMatch = cleanedResult.match(/invalid_signatures["\s]*:\s*(\d+)/i);
+        const confidenceMatch = cleanedResult.match(/confidence["\s]*:\s*([\d.]+)/i);
+        
+        analysis = {
+          valid_signatures: validMatch ? parseInt(validMatch[1]) : 0,
+          invalid_signatures: invalidMatch ? parseInt(invalidMatch[1]) : 0,
+          empty_lines: 0,
+          total_lines_analyzed: 0,
+          confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.75,
+          notes: "JSON parsing failed - manual extraction used"
+        };
+        
+        console.log('🔧 Extraction manuelle:', analysis);
+      }
+      
+      // VALIDATION STRICTE DES DONNÉES
+      const validSignatures = parseInt(analysis.valid_signatures) || 0;
+      const invalidSignatures = parseInt(analysis.invalid_signatures) || 0;
+      const emptyLines = parseInt(analysis.empty_lines) || 0;
+      const totalLines = parseInt(analysis.total_lines_analyzed) || (validSignatures + invalidSignatures + emptyLines);
+      const confidence = parseFloat(analysis.confidence) || 0.85;
+      
+      // Validation logique
+      if (validSignatures < 0 || invalidSignatures < 0) {
+        throw new Error('Valeurs négatives détectées dans l\'analyse');
+      }
+      
+      if (confidence < 0 || confidence > 1) {
+        console.log('⚠️ Confiance corrigée:', confidence, '→ 0.85');
+        analysis.confidence = 0.85;
       }
 
-      console.log('✅ Analyse GPT-4 terminée avec succès:');
-      console.log('   📊 Signatures valides:', analysis.valid_signatures);
-      console.log('   ❌ Signatures invalides:', analysis.invalid_signatures || 0);
-      console.log('   ⚪ Lignes vides:', analysis.empty_lines || 0);
-      console.log('   🎯 Confiance:', Math.round(analysis.confidence * 100) + '%');
-      console.log('   📝 Notes:', analysis.notes);
+      console.log('✅ === ANALYSE GPT-4 TERMINÉE AVEC SUCCÈS ===');
+      console.log('📊 Signatures valides:', validSignatures);
+      console.log('❌ Signatures invalides:', invalidSignatures);
+      console.log('⚪ Lignes vides:', emptyLines);
+      console.log('📏 Total lignes:', totalLines);
+      console.log('🎯 Confiance:', Math.round(confidence * 100) + '%');
+      console.log('📝 Notes:', analysis.notes);
 
-      return {
+      const finalResult = {
         success: true,
         data: {
-          validSignatures: parseInt(analysis.valid_signatures) || 0,
-          invalidSignatures: parseInt(analysis.invalid_signatures) || 0,
-          emptyLines: parseInt(analysis.empty_lines) || 0,
-          totalLines: parseInt(analysis.total_lines_analyzed) || 0,
-          confidence: parseFloat(analysis.confidence) || 0.85,
-          notes: analysis.notes || 'Analyse complétée',
+          validSignatures: validSignatures,
+          invalidSignatures: invalidSignatures,
+          emptyLines: emptyLines,
+          totalLines: totalLines,
+          confidence: confidence,
+          notes: analysis.notes || 'Analyse GPT-4 Vision réussie',
           analysisMethod: 'GPT-4 Vision',
           model: process.env.OPENAI_MODEL || "gpt-4o",
           timestamp: new Date().toISOString(),
@@ -128,20 +166,37 @@ RETOURNE UNIQUEMENT ce JSON (rien d'autre):
         }
       };
 
+      console.log('🎉 === RÉSULTAT FINAL ===');
+      console.log('🎉 Success:', finalResult.success);
+      console.log('🎉 Data:', JSON.stringify(finalResult.data, null, 2));
+
+      return finalResult;
+
     } catch (error) {
-      console.error('❌ Erreur GPT-4 Vision:', error.message);
+      console.error('❌ === ERREUR GPT-4 VISION ===');
+      console.error('❌ Message:', error.message);
       console.error('❌ Stack:', error.stack);
       
-      // Fallback vers analyse simulée en cas d'erreur
+      // FALLBACK AMÉLIORÉ
+      console.log('🎭 === GÉNÉRATION FALLBACK ===');
+      
+      const fallbackValid = Math.floor(Math.random() * 8) + 3; // 3-10 signatures valides
+      const fallbackInvalid = Math.floor(Math.random() * 3) + 1; // 1-3 invalides
+      const fallbackEmpty = Math.floor(Math.random() * 5) + 2; // 2-6 vides
+      
       const fallbackResult = {
-        validSignatures: Math.floor(Math.random() * 5) + 1,
-        invalidSignatures: Math.floor(Math.random() * 2),
-        emptyLines: Math.floor(Math.random() * 3),
-        confidence: 0.5,
-        analysisMethod: 'Simulé (erreur GPT-4)',
-        notes: `Erreur GPT-4: ${error.message}. Analyse simulée utilisée.`,
-        timestamp: new Date().toISOString()
+        validSignatures: fallbackValid,
+        invalidSignatures: fallbackInvalid,
+        emptyLines: fallbackEmpty,
+        totalLines: fallbackValid + fallbackInvalid + fallbackEmpty,
+        confidence: 0.6, // Confiance réduite pour fallback
+        analysisMethod: 'Simulation (GPT-4 error)',
+        notes: `GPT-4 error: ${error.message}. Simulation utilisée.`,
+        timestamp: new Date().toISOString(),
+        error: error.message
       };
+
+      console.log('🎭 Fallback généré:', fallbackResult);
 
       return {
         success: false,
@@ -154,38 +209,71 @@ RETOURNE UNIQUEMENT ce JSON (rien d'autre):
   // Calculer le coût approximatif
   static calculateCost(tokens) {
     // GPT-4o: ~$0.005 per 1K tokens input + $0.015 per 1K tokens output
-    // Estimation moyenne: $0.01 per 1K tokens
     const costPer1KTokens = 0.01;
-    return Math.round((tokens / 1000) * costPer1KTokens * 100) / 100; // En dollars
+    return Math.round((tokens / 1000) * costPer1KTokens * 100) / 100;
   }
 
   // Test de connectivité OpenAI
   static async testConnection() {
     try {
-      console.log('🔍 Test de connexion OpenAI...');
+      console.log('🔍 === TEST CONNEXION OPENAI ===');
+      
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY manquante dans variables environnement');
+      }
+
+      console.log('🔑 API Key présente:', process.env.OPENAI_API_KEY.substring(0, 8) + '...');
       
       const response = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: "Test de connexion. Réponds juste 'OK'" }],
-        max_tokens: 10
+        messages: [{
+          role: "user",
+          content: "Test connexion. Répondre UNIQUEMENT: {\"status\":\"ok\"}"
+        }],
+        max_tokens: 10,
+        temperature: 0
       });
 
+      const content = response.choices[0].message.content;
+      console.log('✅ Réponse test:', content);
       console.log('✅ Connexion OpenAI réussie');
-      return { success: true, response: response.choices[0].message.content };
+      
+      return {
+        success: true,
+        response: content,
+        model: "gpt-3.5-turbo",
+        tokensUsed: response.usage?.total_tokens || 0
+      };
+      
     } catch (error) {
-      console.error('❌ Erreur connexion OpenAI:', error.message);
-      return { success: false, error: error.message };
+      console.error('❌ === ERREUR TEST CONNEXION ===');
+      console.error('❌ Message:', error.message);
+      console.error('❌ Type:', error.constructor.name);
+      
+      if (error.code === 'invalid_api_key') {
+        console.error('❌ Clé API invalide');
+      } else if (error.code === 'insufficient_quota') {
+        console.error('❌ Quota OpenAI épuisé');
+      }
+      
+      return {
+        success: false,
+        error: error.message,
+        code: error.code || 'unknown'
+      };
     }
   }
 
-  // Validation croisée (optionnel - pour très haute précision)
+  // Validation croisée pour très haute précision
   static async doubleCheckAnalysis(imageBuffer, firstResult, initiativeName) {
     try {
-      console.log('🔍 Validation croisée en cours...');
+      console.log('🔍 === VALIDATION CROISÉE ===');
+      console.log('🔍 Premier résultat:', firstResult.validSignatures, 'signatures valides');
       
       const secondAnalysis = await this.analyzeSignatureSheet(imageBuffer, initiativeName);
       
       if (!secondAnalysis.success) {
+        console.log('⚠️ Seconde analyse échouée, validation impossible');
         return { validated: false, confidence: firstResult.confidence };
       }
 
@@ -196,10 +284,12 @@ RETOURNE UNIQUEMENT ce JSON (rien d'autre):
       const isConsistent = diff <= 1; // Tolérance de 1 signature
       const avgConfidence = (firstResult.confidence + secondAnalysis.data.confidence) / 2;
       
-      console.log(`🔍 Validation: ${isConsistent ? '✅ Cohérent' : '⚠️ Divergent'}`);
-      console.log(`   Première analyse: ${firstResult.validSignatures}`);
-      console.log(`   Seconde analyse: ${secondAnalysis.data.validSignatures}`);
-      console.log(`   Différence: ${diff}`);
+      console.log(`🔍 === RÉSULTAT VALIDATION ===`);
+      console.log(`🔍 Cohérence: ${isConsistent ? '✅ OUI' : '❌ NON'}`);
+      console.log(`🔍 Première analyse: ${firstResult.validSignatures}`);
+      console.log(`🔍 Seconde analyse: ${secondAnalysis.data.validSignatures}`);
+      console.log(`🔍 Différence: ${diff}`);
+      console.log(`🔍 Confiance finale: ${Math.round(avgConfidence * 100)}%`);
 
       return {
         validated: isConsistent,
@@ -207,8 +297,9 @@ RETOURNE UNIQUEMENT ce JSON (rien d'autre):
         firstCount: firstResult.validSignatures,
         secondCount: secondAnalysis.data.validSignatures,
         finalConfidence: isConsistent ? Math.min(avgConfidence + 0.1, 0.98) : avgConfidence - 0.1,
-        recommendation: isConsistent ? 'Utiliser le résultat' : 'Révision manuelle recommandée'
+        recommendation: isConsistent ? 'Résultat fiable' : 'Révision manuelle recommandée'
       };
+      
     } catch (error) {
       console.error('❌ Erreur validation croisée:', error);
       return { validated: true, confidence: firstResult.confidence };

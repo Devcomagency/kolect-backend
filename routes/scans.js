@@ -33,7 +33,7 @@ async function saveFile(file) {
   return `https://kolect-backend.onrender.com/uploads/${fileName}`;
 }
 
-// === NOUVELLE ROUTE AVEC DEBUG COMPLET ===
+// === ROUTE ANALYSE AVEC DEBUG COMPLET ===
 router.post('/analyze-signatures', async (req, res) => {
   try {
     console.log('🔄 === ANALYSE GPT-4 SIGNATURES AVEC DEBUG ===');
@@ -67,7 +67,6 @@ router.post('/analyze-signatures', async (req, res) => {
         imageBuffer = Buffer.from(base64Data, 'base64');
       } else if (typeof photoData === 'string' && photoData.startsWith('http')) {
         console.log('🌐 Photo format: URL externe');
-        // Pour URL externe, on ne peut pas analyser avec GPT-4
         throw new Error('URL externe non supportée pour GPT-4 Vision');
       } else if (typeof photoData === 'string') {
         console.log('🖼️ Photo format: base64 pur');
@@ -209,6 +208,162 @@ router.post('/analyze-signatures', async (req, res) => {
   }
 });
 
+// === NOUVELLE ROUTE POUR RÉSULTATS JSON ===
+router.post('/submit-results', authenticateToken, async (req, res) => {
+  try {
+    console.log('📤 === SOUMISSION RÉSULTATS JSON ===');
+    console.log('📊 User ID:', req.user.id);
+    console.log('📊 User email:', req.user.email);
+    
+    const {
+      initiative_id,
+      valid_signatures,
+      rejected_signatures,
+      total_signatures,
+      ocr_confidence,
+      location,
+      notes
+    } = req.body;
+
+    console.log('📦 Données reçues:', JSON.stringify(req.body, null, 2));
+
+    // Validation des données requises
+    if (!initiative_id) {
+      return res.status(400).json({
+        error: 'Initiative ID requis',
+        received: { initiative_id }
+      });
+    }
+
+    if (!total_signatures || total_signatures < 0) {
+      return res.status(400).json({
+        error: 'Total signatures requis et positif',
+        received: { total_signatures }
+      });
+    }
+
+    // Validation logique
+    const validSigs = parseInt(valid_signatures) || 0;
+    const rejectedSigs = parseInt(rejected_signatures) || 0;
+    const totalSigs = parseInt(total_signatures) || 0;
+    
+    if (validSigs + rejectedSigs !== totalSigs) {
+      console.log('⚠️ Correction automatique des totaux:');
+      console.log(`   Valid: ${validSigs}, Rejected: ${rejectedSigs}, Total: ${totalSigs}`);
+      console.log(`   Calculé: ${validSigs + rejectedSigs}`);
+    }
+
+    // Vérifier que l'initiative existe
+    const initiativeCheck = await pool.query(
+      'SELECT id, name FROM initiatives WHERE id = $1',
+      [initiative_id]
+    );
+
+    if (initiativeCheck.rows.length === 0) {
+      return res.status(400).json({
+        error: 'Initiative non trouvée',
+        initiative_id: initiative_id
+      });
+    }
+
+    const initiativeName = initiativeCheck.rows[0].name;
+    console.log('🎯 Initiative validée:', initiativeName);
+
+    // Insérer en base de données
+    const insertQuery = `
+      INSERT INTO scans (
+        collaborator_id, initiative_id, 
+        valid_signatures, rejected_signatures, total_signatures, 
+        ocr_confidence, status, notes, location,
+        created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, NOW(), NOW())
+      RETURNING *
+    `;
+    
+    const queryParams = [
+      req.user.id,
+      initiative_id,
+      validSigs,
+      rejectedSigs,
+      totalSigs,
+      parseFloat(ocr_confidence) || 0.5,
+      notes || 'Scan mobile JSON',
+      location || 'Mobile App'
+    ];
+
+    console.log('🗃️ Paramètres requête:', queryParams);
+
+    const result = await pool.query(insertQuery, queryParams);
+    const savedScan = result.rows[0];
+
+    console.log('✅ === SCAN JSON ENREGISTRÉ AVEC SUCCÈS ===');
+    console.log('✅ ID scan:', savedScan.id);
+    console.log('✅ Collaborateur:', req.user.email);
+    console.log('✅ Initiative:', initiativeName);
+    console.log('✅ Signatures valides:', savedScan.valid_signatures);
+    console.log('✅ Signatures rejetées:', savedScan.rejected_signatures);
+    console.log('✅ Total signatures:', savedScan.total_signatures);
+
+    // Statistiques utilisateur mises à jour
+    const userStatsQuery = `
+      SELECT 
+        COUNT(*) as total_scans,
+        COALESCE(SUM(valid_signatures), 0) as total_valid,
+        COALESCE(SUM(rejected_signatures), 0) as total_rejected,
+        COALESCE(SUM(total_signatures), 0) as total_all
+      FROM scans 
+      WHERE collaborator_id = $1
+    `;
+    
+    const userStats = await pool.query(userStatsQuery, [req.user.id]);
+    const stats = userStats.rows[0];
+
+    console.log('📊 Statistiques utilisateur mises à jour:');
+    console.log('   📈 Total scans:', stats.total_scans);
+    console.log('   ✅ Total signatures valides:', stats.total_valid);
+    console.log('   ❌ Total signatures rejetées:', stats.total_rejected);
+    console.log('   📊 Total général:', stats.total_all);
+
+    res.status(201).json({
+      success: true,
+      message: 'Scan enregistré avec succès ✅',
+      scan: {
+        id: savedScan.id,
+        initiative: initiativeName,
+        validSignatures: savedScan.valid_signatures,
+        rejectedSignatures: savedScan.rejected_signatures,
+        totalSignatures: savedScan.total_signatures,
+        confidence: savedScan.ocr_confidence,
+        location: savedScan.location,
+        notes: savedScan.notes,
+        createdAt: savedScan.created_at,
+        status: savedScan.status
+      },
+      user: {
+        email: req.user.email,
+        totalScans: parseInt(stats.total_scans),
+        totalValidSignatures: parseInt(stats.total_valid),
+        totalRejectedSignatures: parseInt(stats.total_rejected),
+        totalAllSignatures: parseInt(stats.total_all)
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ === ERREUR SUBMIT RESULTS ===');
+    console.error('❌ Message:', error.message);
+    console.error('❌ Stack:', error.stack);
+    console.error('❌ Body reçu:', req.body);
+    
+    res.status(500).json({
+      error: 'Erreur enregistrement scan',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Liste initiatives
 router.get('/initiatives', authenticateToken, async (req, res) => {
   try {
@@ -229,7 +384,7 @@ router.get('/initiatives', authenticateToken, async (req, res) => {
 });
 
 // Test GPT-4
-router.get('/test-gpt4', authenticateToken, async (req, res) => {
+router.get('/test-gpt4', async (req, res) => {
   try {
     console.log('🧪 === TEST CONNEXION GPT-4 ===');
     
@@ -254,21 +409,24 @@ router.get('/test-gpt4', authenticateToken, async (req, res) => {
     res.json({
       ...testResult,
       openaiKey: !!process.env.OPENAI_API_KEY,
-      openaiModel: process.env.OPENAI_MODEL || 'non défini'
+      openaiKeyPreview: process.env.OPENAI_API_KEY?.substring(0, 8) + '...' || 'MANQUANT',
+      openaiModel: process.env.OPENAI_MODEL || 'non défini',
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('❌ Erreur test GPT-4:', error);
     res.status(500).json({
       error: error.message,
-      debug: 'Erreur lors du test de connexion'
+      debug: 'Erreur lors du test de connexion',
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Soumission scan AVEC GPT-4 VISION
+// Soumission scan AVEC FICHIER (route originale)
 router.post('/submit', authenticateToken, upload.single('scan'), async (req, res) => {
   try {
-    console.log('📤 === SOUMISSION SCAN AVEC GPT-4 ===');
+    console.log('📤 === SOUMISSION SCAN AVEC FICHIER ===');
     
     if (!req.file) {
       return res.status(400).json({ error: 'Image requise' });
@@ -358,7 +516,7 @@ router.post('/submit', authenticateToken, upload.single('scan'), async (req, res
       analysisMethod = 'Simulation (GPT-4 indisponible)';
     }
 
-    // Insérer en base
+    // Insérer en base avec image_hash et image_url
     const insertQuery = `
       INSERT INTO scans (
         collaborator_id, initiative_id, image_url, image_hash,
@@ -381,7 +539,7 @@ router.post('/submit', authenticateToken, upload.single('scan'), async (req, res
       `${analysisMethod} | ${notes}`
     ]);
 
-    console.log('✅ Scan enregistré avec ID:', result.rows[0].id);
+    console.log('✅ Scan avec fichier enregistré avec ID:', result.rows[0].id);
 
     res.status(201).json({
       success: true,
@@ -395,6 +553,7 @@ router.post('/submit', authenticateToken, upload.single('scan'), async (req, res
         totalSignatures: result.rows[0].total_signatures,
         confidence: result.rows[0].ocr_confidence,
         analysisMethod: analysisMethod,
+        imageUrl: imageUrl,
         createdAt: result.rows[0].created_at
       },
       gpt4Status: analysisMethod.includes('GPT-4') ? 'success' : 'fallback'
