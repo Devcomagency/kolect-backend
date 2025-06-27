@@ -1,50 +1,66 @@
 {
   "name": "kolect-backend",
-  "version": "1.0.0",
-  "description": "Backend pour l'app de récolte de signatures Kolect",
+  "version": "2.0.0",
+  "description": "Backend complet pour l'app Kolect - Mobile + Admin Backoffice",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate": "node migrations/migrate.js",
     "setup": "node scripts/setup.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "setup-admin": "node setup-admin-complete.js",
+    "test": "node test-admin-features.js",
+    "backup": "node scripts/backup-database.js",
+    "deploy": "npm run setup-admin && npm start"
   },
   "dependencies": {
-    "axios": "^1.6.2",
-    "bcrypt": "^6.0.0",
-    "bcryptjs": "^2.4.3",
-    "bull": "^4.16.5",
+    "express": "^4.18.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "expo": "~53.0.12",
-    "expo-dev-client": "~5.2.1",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "express-validator": "^7.0.1",
-    "helmet": "^7.1.0",
+    "pg": "^8.11.3",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "sharp": "^0.34.2",
+    "axios": "^1.6.2",
     "nodemailer": "^6.9.7",
     "openai": "^5.2.0",
     "pdf-lib": "^1.17.1",
-    "pg": "^8.11.3",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "winston": "^3.11.0",
     "puppeteer-core": "^24.10.2",
-    "react": "19.0.0",
-    "react-native": "0.79.4",
-    "sharp": "^0.34.2",
-    "winston": "^3.11.0"
+    "bull": "^4.16.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
   },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "keywords": [
-    "signatures",
     "kolect",
+    "signatures",
+    "collection",
+    "admin",
+    "backoffice",
     "api",
-    "backend"
+    "backend",
+    "express",
+    "postgresql",
+    "react-native"
   ],
   "author": "Equipe Kolect",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kolect/kolect-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kolect/kolect-backend/issues"
+  },
+  "homepage": "https://kolect.app"
 }

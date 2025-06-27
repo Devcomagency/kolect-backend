@@ -3,621 +3,1570 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KOLECT Admin - Dashboard</title>
+    <title>KOLECT Admin V2.0 - Backoffice Complet</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #4ECDC4 0%, #35A085 100%);
-            min-height: 100vh;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
         .admin-container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
-        
+
+        /* Header */
         .admin-header {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
-        .logo {
-            font-size: 28px;
-            font-weight: bold;
+
+        .logo-section h1 {
             color: #4ECDC4;
+            font-size: 28px;
+            font-weight: 700;
         }
-        
+
+        .logo-section p {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
         .admin-info {
             display: flex;
             align-items: center;
             gap: 15px;
         }
-        
-        .logout-btn {
-            background: #E74C3C;
+
+        .admin-avatar {
+            width: 40px;
+            height: 40px;
+            background: #4ECDC4;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
             font-weight: bold;
         }
-        
-        .logout-btn:hover {
-            background: #C0392B;
+
+        .logout-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
         }
-        
+
+        .logout-btn:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+        }
+
+        /* Navigation Tabs */
+        .admin-tabs {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-nav {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tab-btn.active {
+            background: #4ECDC4;
+            color: white;
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Cards */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 20px;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
         }
-        
+
         .stat-card {
-            background: white;
-            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
             padding: 25px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            text-align: center;
-            transition: transform 0.2s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
         }
-        
+
         .stat-card:hover {
             transform: translateY(-5px);
         }
-        
-        .stat-number {
-            font-size: 36px;
-            font-weight: bold;
-            color: #4ECDC4;
+
+        .stat-icon {
+            font-size: 24px;
             margin-bottom: 10px;
         }
-        
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #4ECDC4;
+            margin-bottom: 5px;
+        }
+
         .stat-label {
-            font-size: 16px;
-            color: #2C3E50;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-growth {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 20px;
             font-weight: 500;
         }
-        
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
+
+        .growth-positive {
+            background: rgba(46, 204, 113, 0.1);
+            color: #2ecc71;
         }
-        
-        .action-btn {
-            background: white;
-            border: 2px solid #4ECDC4;
-            color: #4ECDC4;
-            padding: 15px 20px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: bold;
-            text-decoration: none;
-            text-align: center;
-            transition: all 0.2s ease;
+
+        .growth-negative {
+            background: rgba(231, 76, 60, 0.1);
+            color: #e74c3c;
         }
-        
-        .action-btn:hover {
-            background: #4ECDC4;
-            color: white;
-        }
-        
-        .recent-activity {
-            background: white;
-            border-radius: 12px;
+
+        /* Charts */
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
             padding: 25px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
-        
-        .recent-title {
-            font-size: 20px;
-            font-weight: bold;
-            color: #2C3E50;
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
             margin-bottom: 20px;
-        }
-        
-        .activity-item {
+            color: #333;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #ECF0F1;
         }
-        
-        .activity-item:last-child {
-            border-bottom: none;
+
+        /* Tables */
+        .data-table {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+            margin-bottom: 25px;
         }
-        
-        .activity-text {
-            color: #2C3E50;
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
         }
-        
-        .activity-time {
-            color: #7F8C8D;
+
+        .table th,
+        .table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .table th {
+            background: rgba(78, 205, 196, 0.1);
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+        }
+
+        .table tr:hover {
+            background: rgba(78, 205, 196, 0.05);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
             font-size: 14px;
         }
-        
-        .hidden {
+
+        .btn-primary {
+            background: #4ECDC4;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #35A085;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #e67e22;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #27ae60;
+        }
+
+        /* Initiatives */
+        .initiative-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .initiative-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .initiative-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .initiative-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: rgba(46, 204, 113, 0.1);
+            color: #2ecc71;
+        }
+
+        .status-inactive {
+            background: rgba(231, 76, 60, 0.1);
+            color: #e74c3c;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ECDC4, #35A085);
+            transition: width 0.3s;
+        }
+
+        /* Modals */
+        .modal {
             display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
         }
-        
-        .login-form {
-            max-width: 400px;
-            margin: 100px auto;
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
             background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
         }
-        
-        .form-title {
-            text-align: center;
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
             font-size: 24px;
-            font-weight: bold;
-            color: #2C3E50;
-            margin-bottom: 30px;
+            font-weight: 600;
+            color: #333;
         }
-        
+
+        .close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        /* Forms */
         .form-group {
             margin-bottom: 20px;
         }
-        
+
         .form-label {
             display: block;
             margin-bottom: 8px;
-            font-weight: bold;
-            color: #2C3E50;
+            font-weight: 500;
+            color: #333;
         }
-        
-        .form-input {
+
+        .form-control {
             width: 100%;
             padding: 12px;
-            border: 2px solid #ECF0F1;
+            border: 1px solid #ddd;
             border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.2s ease;
+            font-size: 14px;
+            transition: border-color 0.3s;
         }
-        
-        .form-input:focus {
+
+        .form-control:focus {
             outline: none;
             border-color: #4ECDC4;
         }
-        
-        .form-btn {
-            width: 100%;
-            background: #4ECDC4;
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        
-        .form-btn:hover {
-            background: #35A085;
-        }
-        
-        .error-message {
-            background: #E74C3C;
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
 
-        .page-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .users-grid {
-            display: grid;
-            gap: 15px;
-        }
-
-        .user-card {
-            background: white;
-            border-radius: 10px;
+        /* Filters */
+        .filters {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
             padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
 
-        .user-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
         }
 
-        .user-name {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2C3E50;
-        }
-
-        .user-email {
-            color: #7F8C8D;
-            font-size: 14px;
-        }
-
-        .user-stats {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-        }
-
-        .user-stat {
-            text-align: center;
-        }
-
-        .user-stat-number {
-            font-size: 20px;
-            font-weight: bold;
-            color: #4ECDC4;
-        }
-
-        .user-stat-label {
-            font-size: 12px;
-            color: #7F8C8D;
-        }
-
+        /* Status badges */
         .status-badge {
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 500;
+            text-transform: uppercase;
         }
 
-        .status-active {
-            background: #D5EDDA;
-            color: #155724;
+        .status-pending {
+            background: rgba(243, 156, 18, 0.1);
+            color: #f39c12;
         }
 
-        .status-suspended {
-            background: #F8D7DA;
-            color: #721C24;
+        .status-approved {
+            background: rgba(46, 204, 113, 0.1);
+            color: #2ecc71;
         }
 
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 12px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-            margin-left: 5px;
+        .status-rejected {
+            background: rgba(231, 76, 60, 0.1);
+            color: #e74c3c;
         }
 
-        .btn-warning {
-            background: #FFC107;
-            color: #000;
+        /* Loading & Error */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
         }
 
-        .btn-success {
-            background: #28A745;
-            color: white;
+        .error {
+            background: rgba(231, 76, 60, 0.1);
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: rgba(46, 204, 113, 0.1);
+            color: #2ecc71;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .admin-container {
+                padding: 15px;
+            }
+
+            .admin-header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .tab-nav {
+                flex-wrap: wrap;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filters-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- LOGIN FORM -->
-    <div id="loginForm" class="login-form">
-        <div class="form-title">🔐 KOLECT Admin</div>
-        <div id="errorMessage" class="error-message hidden"></div>
-        
-        <form onsubmit="handleLogin(event)">
-            <div class="form-group">
-                <label class="form-label">Email</label>
-                <input type="email" class="form-input" id="email" required value="admin@kolect.ch">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="admin-container">
+        <div style="max-width: 400px; margin: 100px auto;">
+            <div class="stat-card">
+                <h1 style="text-align: center; color: #4ECDC4; margin-bottom: 30px;">
+                    🏢 KOLECT Admin V2.0
+                </h1>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" id="loginEmail" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mot de passe</label>
+                        <input type="password" id="loginPassword" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 15px;">
+                        Se connecter
+                    </button>
+                </form>
+                <div id="loginError" class="error" style="display: none;"></div>
             </div>
-            
-            <div class="form-group">
-                <label class="form-label">Mot de passe</label>
-                <input type="password" class="form-input" id="password" required placeholder="Devcom20!">
-            </div>
-            
-            <button type="submit" class="form-btn">Se connecter</button>
-        </form>
+        </div>
     </div>
 
-    <!-- ADMIN DASHBOARD -->
-    <div id="adminDashboard" class="admin-container hidden">
+    <!-- Main Admin Interface -->
+    <div id="mainInterface" class="admin-container" style="display: none;">
         <!-- Header -->
         <div class="admin-header">
-            <div class="logo">KOLECT Admin</div>
+            <div class="logo-section">
+                <h1>🏢 KOLECT Admin V2.0</h1>
+                <p>Backoffice de gestion complet</p>
+            </div>
             <div class="admin-info">
-                <span id="adminName">Admin</span>
-                <button class="logout-btn" onclick="handleLogout()">Déconnexion</button>
+                <div class="admin-avatar" id="adminAvatar">A</div>
+                <div>
+                    <div style="font-weight: 600;" id="adminName">Admin</div>
+                    <div style="font-size: 12px; color: #666;">Administrateur</div>
+                </div>
+                <button class="logout-btn" onclick="logout()">Déconnexion</button>
             </div>
         </div>
 
-        <!-- Navigation -->
-        <div class="quick-actions">
-            <button class="action-btn" onclick="showDashboard()">📊 Dashboard</button>
-            <button class="action-btn" onclick="showUsers()">👥 Collaborateurs</button>
-            <button class="action-btn" onclick="exportData()">⬇️ Export</button>
+        <!-- Navigation Tabs -->
+        <div class="admin-tabs">
+            <div class="tab-nav">
+                <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+                <button class="tab-btn" onclick="switchTab('collaborators')">👥 Collaborateurs</button>
+                <button class="tab-btn" onclick="switchTab('initiatives')">🎯 Initiatives</button>
+                <button class="tab-btn" onclick="switchTab('verifications')">✅ Vérifications</button>
+                <button class="tab-btn" onclick="switchTab('activity')">📈 Activité</button>
+            </div>
         </div>
 
-        <!-- Dashboard View -->
-        <div id="dashboardView">
-            <!-- Statistics -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-number" id="totalSignatures">0</div>
-                    <div class="stat-label">Signatures totales</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="activeCollaborators">0</div>
-                    <div class="stat-label">Collaborateurs</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="averageQuality">0%</div>
-                    <div class="stat-label">Qualité moyenne</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="todayScans">0</div>
-                    <div class="stat-label">Scans aujourd'hui</div>
-                </div>
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="stats-grid" id="statsGrid">
+                <div class="loading">Chargement des statistiques...</div>
             </div>
 
-            <!-- Recent Activity -->
-            <div class="recent-activity">
-                <div class="recent-title">🕒 Activité récente</div>
-                <div id="recentActivity">
-                    <!-- Chargé dynamiquement -->
+            <div class="chart-container">
+                <div class="chart-title">📈 Évolution des signatures (30 derniers jours)</div>
+                <canvas id="signaturesChart" width="400" height="100"></canvas>
+            </div>
+
+            <div class="data-table">
+                <div class="chart-title">🎯 Performance par initiative</div>
+                <div id="initiativesPerformance">
+                    <div class="loading">Chargement...</div>
                 </div>
             </div>
         </div>
 
-        <!-- Users View -->
-        <div id="usersView" class="hidden">
-            <div class="page-title">👥 Gestion des Collaborateurs</div>
-            <div id="usersList" class="users-grid">
-                <!-- Chargé dynamiquement -->
+        <!-- Collaborators Tab -->
+        <div id="collaborators" class="tab-content">
+            <div class="chart-title">
+                👥 Gestion des collaborateurs
+                <button class="btn btn-primary" onclick="showCollaboratorStats()">📊 Stats</button>
+            </div>
+            
+            <div class="data-table">
+                <table class="table" id="collaboratorsTable">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Statut</th>
+                            <th>Scans</th>
+                            <th>Signatures</th>
+                            <th>Qualité</th>
+                            <th>Dernier scan</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="8" class="loading">Chargement des collaborateurs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Initiatives Tab -->
+        <div id="initiatives" class="tab-content">
+            <div class="chart-title">
+                🎯 Gestion des initiatives
+                <button class="btn btn-primary" onclick="showCreateInitiativeModal()">➕ Nouvelle initiative</button>
+            </div>
+            <div id="initiativesList">
+                <div class="loading">Chargement des initiatives...</div>
+            </div>
+        </div>
+
+        <!-- Verifications Tab -->
+        <div id="verifications" class="tab-content">
+            <div class="chart-title">
+                ✅ Vérifications manuelles
+                <div>
+                    <button class="btn btn-success" onclick="loadVerificationStats()">📊 Stats</button>
+                    <button class="btn btn-primary" onclick="loadPendingVerifications()">🔄 Actualiser</button>
+                </div>
+            </div>
+
+            <div class="filters">
+                <div class="filters-grid">
+                    <div class="form-group">
+                        <label class="form-label">Type de problème</label>
+                        <select id="doubtReasonFilter" class="form-control" onchange="loadPendingVerifications()">
+                            <option value="all">Tous les problèmes</option>
+                            <option value="low_confidence">Confiance faible</option>
+                            <option value="too_many_signatures">Trop de signatures</option>
+                            <option value="poor_quality">Qualité faible</option>
+                            <option value="too_few_signatures">Peu de signatures</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Actions en lot</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-success" onclick="bulkApprove()">✅ Approuver sélection</button>
+                            <button class="btn btn-danger" onclick="bulkReject()">❌ Rejeter sélection</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-table">
+                <table class="table" id="verificationsTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllVerifications" onchange="toggleSelectAll()"></th>
+                            <th>Collaborateur</th>
+                            <th>Initiative</th>
+                            <th>Signatures</th>
+                            <th>Problème</th>
+                            <th>Qualité</th>
+                            <th>Confiance</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="9" class="loading">Chargement des vérifications...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Activity Tab -->
+        <div id="activity" class="tab-content">
+            <div class="chart-title">📈 Activité détaillée</div>
+            
+            <div class="filters">
+                <div class="filters-grid">
+                    <div class="form-group">
+                        <label class="form-label">Collaborateur</label>
+                        <select id="activityCollaboratorFilter" class="form-control">
+                            <option value="all">Tous les collaborateurs</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Initiative</label>
+                        <select id="activityInitiativeFilter" class="form-control">
+                            <option value="all">Toutes les initiatives</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date début</label>
+                        <input type="date" id="activityDateFrom" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date fin</label>
+                        <input type="date" id="activityDateTo" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Grouper par</label>
+                        <select id="activityGroupBy" class="form-control">
+                            <option value="day">Jour</option>
+                            <option value="week">Semaine</option>
+                            <option value="month">Mois</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="loadActivityDetailed()" style="width: 100%;">
+                            🔍 Filtrer
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid" id="activityStats">
+                <div class="loading">Appliquez des filtres pour voir l'activité</div>
+            </div>
+
+            <div class="data-table">
+                <table class="table" id="activityTable">
+                    <thead>
+                        <tr>
+                            <th>Période</th>
+                            <th>Collaborateur</th>
+                            <th>Initiative</th>
+                            <th>Scans</th>
+                            <th>Signatures</th>
+                            <th>Qualité moy.</th>
+                            <th>Fiabilité</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Utilisez les filtres pour charger l'activité</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- Collaborator Details Modal -->
+    <div id="collaboratorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Détails collaborateur</h2>
+                <button class="close" onclick="closeModal('collaboratorModal')">&times;</button>
+            </div>
+            <div id="collaboratorDetails">
+                <div class="loading">Chargement...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Initiative Modal -->
+    <div id="createInitiativeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nouvelle initiative</h2>
+                <button class="close" onclick="closeModal('createInitiativeModal')">&times;</button>
+            </div>
+            <form id="createInitiativeForm">
+                <div class="form-group">
+                    <label class="form-label">Nom *</label>
+                    <input type="text" id="initiativeName" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea id="initiativeDescription" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Objectif signatures</label>
+                    <input type="number" id="initiativeTarget" class="form-control" value="1000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Échéance</label>
+                    <input type="date" id="initiativeDeadline" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Instructions GPT-4</label>
+                    <textarea id="initiativeGptInstructions" class="form-control" rows="3"
+                        placeholder="Instructions spécifiques pour la détection automatique"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Couleur thème</label>
+                    <input type="color" id="initiativeThemeColor" class="form-control" value="#4ECDC4">
+                </div>
+                <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-danger" onclick="closeModal('createInitiativeModal')">
+                        Annuler
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        Créer l'initiative
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Verification Modal -->
+    <div id="verificationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Vérification manuelle</h2>
+                <button class="close" onclick="closeModal('verificationModal')">&times;</button>
+            </div>
+            <div id="verificationContent">
+                <div class="loading">Chargement...</div>
             </div>
         </div>
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000';
-        let authToken = localStorage.getItem('adminToken');
+        let adminData = null;
+        let signaturesChart = null;
+        let selectedVerifications = new Set();
 
+        // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
-            if (authToken) {
-                verifyToken();
-            } else {
-                showLogin();
-            }
+            checkAuth();
         });
 
-        async function handleLogin(event) {
-            event.preventDefault();
-            console.log('🔐 Tentative de connexion...');
-            
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
+        // Authentification
+        async function checkAuth() {
+            const token = localStorage.getItem('adminToken');
+            if (!token) {
+                showLoginScreen();
+                return;
+            }
+
             try {
-                console.log('📡 Envoi requête vers:', API_URL + '/api/admin/auth/login');
+                const response = await fetch('/api/admin/auth/verify', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Token invalide');
+
+                const data = await response.json();
+                adminData = data.admin;
                 
-                const response = await fetch(API_URL + '/api/admin/auth/login', {
+                showMainInterface();
+                loadDashboard();
+            } catch (error) {
+                localStorage.removeItem('adminToken');
+                showLoginScreen();
+            }
+        }
+
+        function showLoginScreen() {
+            document.getElementById('loginScreen').style.display = 'block';
+            document.getElementById('mainInterface').style.display = 'none';
+        }
+
+        function showMainInterface() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainInterface').style.display = 'block';
+            
+            document.getElementById('adminName').textContent = adminData.name;
+            document.getElementById('adminAvatar').textContent = adminData.name[0].toUpperCase();
+        }
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+
+            try {
+                const response = await fetch('/api/admin/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
-                
-                console.log('📡 Réponse reçue:', response.status);
+
                 const data = await response.json();
-                console.log('📊 Données:', data);
-                
-                if (response.ok) {
-                    localStorage.setItem('adminToken', data.token);
-                    authToken = data.token;
-                    showDashboard();
-                    loadDashboardData(data.admin);
-                } else {
-                    showError(data.message);
-                }
-            } catch (error) {
-                console.error('❌ Erreur:', error);
-                showError('Erreur de connexion au serveur');
-            }
-        }
 
-        async function verifyToken() {
+                if (!response.ok) {
+                    throw new Error(data.message || 'Erreur de connexion');
+                }
+
+                localStorage.setItem('adminToken', data.token);
+                adminData = data.admin;
+                
+                showMainInterface();
+                loadDashboard();
+
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        // Dashboard
+        async function loadDashboard() {
             try {
-                const response = await fetch(API_URL + '/api/admin/auth/verify', {
-                    headers: { 'Authorization': 'Bearer ' + authToken }
+                const token = localStorage.getItem('adminToken');
+                
+                // Stats principales
+                const statsResponse = await fetch('/api/admin/dashboard/stats', {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    showDashboard();
-                    loadDashboardData(data.admin);
-                } else {
-                    showLogin();
-                }
-            } catch (error) {
-                showLogin();
-            }
-        }
-
-        async function loadDashboardData(admin) {
-            document.getElementById('adminName').textContent = admin.name;
-            await loadStats();
-            await loadRecentActivity();
-        }
-
-        async function loadStats() {
-            try {
-                const response = await fetch(API_URL + '/api/admin/dashboard/stats', {
-                    headers: { 'Authorization': 'Bearer ' + authToken }
+                if (!statsResponse.ok) throw new Error('Erreur stats');
+                const stats = await statsResponse.json();
+                
+                displayStats(stats);
+                displayInitiativesPerformance(stats.realInitiatives || []);
+                
+                // Activité récente
+                const activityResponse = await fetch('/api/admin/dashboard/recent-activity', {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if (response.ok) {
-                    const stats = await response.json();
-                    
-                    document.getElementById('totalSignatures').textContent = stats.totalSignatures || 0;
-                    document.getElementById('activeCollaborators').textContent = stats.activeCollaborators || 0;
-                    document.getElementById('averageQuality').textContent = (stats.averageQuality || 0) + '%';
-                    document.getElementById('todayScans').textContent = stats.todayScans || 0;
+                if (activityResponse.ok) {
+                    const activity = await activityResponse.json();
+                    // Stocker pour usage ultérieur
+                    window.recentActivity = activity;
                 }
+
+                // Charger collaborateurs
+                loadCollaborators();
+                loadInitiatives();
+
             } catch (error) {
-                console.error('Erreur chargement stats:', error);
+                console.error('Erreur chargement:', error);
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="error">Erreur de chargement: ${error.message}</div>
+                `;
             }
         }
 
-        async function loadRecentActivity() {
+        function displayStats(stats) {
+            const statsGrid = document.getElementById('statsGrid');
+            const growthClass = stats.growthPercent >= 0 ? 'growth-positive' : 'growth-negative';
+            const growthIcon = stats.growthPercent >= 0 ? '↗️' : '↘️';
+
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-number">${stats.totalSignatures.toLocaleString()}</div>
+                    <div class="stat-label">Signatures totales</div>
+                    <div class="stat-growth ${growthClass}">
+                        ${growthIcon} ${Math.abs(stats.growthPercent)}% vs hier
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-number">${stats.activeCollaborators}</div>
+                    <div class="stat-label">Collaborateurs actifs</div>
+                    <div class="stat-growth growth-positive">
+                        📈 ${stats.activeToday} actifs aujourd'hui
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-number">${stats.avgQuality}%</div>
+                    <div class="stat-label">Qualité moyenne</div>
+                    <div class="stat-growth growth-positive">
+                        ⭐ ${stats.avgConfidence}% confiance
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-number">${(stats.realInitiatives || []).length}</div>
+                    <div class="stat-label">Initiatives actives</div>
+                    <div class="stat-growth growth-positive">
+                        📋 ${stats.totalScans} scans totaux
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayInitiativesPerformance(initiatives) {
+            const container = document.getElementById('initiativesPerformance');
+            
+            if (initiatives.length === 0) {
+                container.innerHTML = '<p>Aucune initiative trouvée</p>';
+                return;
+            }
+
+            container.innerHTML = initiatives.map(init => {
+                const progress = init.target > 0 ? Math.min((init.collected / init.target) * 100, 100) : 0;
+                
+                return `
+                    <div class="initiative-card">
+                        <div class="initiative-header">
+                            <div class="initiative-name">${init.name}</div>
+                            <div class="initiative-status status-${init.status}">${init.status}</div>
+                        </div>
+                        <p style="color: #666; margin-bottom: 15px;">${init.description || 'Aucune description'}</p>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span><strong>${init.collected.toLocaleString()}</strong> / ${init.target.toLocaleString()} signatures</span>
+                            <span><strong>${progress.toFixed(1)}%</strong></span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; color: #666;">
+                            <span>📊 ${init.scanCount} scans</span>
+                            <span>📅 Échéance: ${init.deadline ? new Date(init.deadline).toLocaleDateString() : 'Non définie'}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Collaborateurs
+        async function loadCollaborators() {
             try {
-                const response = await fetch(API_URL + '/api/admin/dashboard/recent-activity', {
-                    headers: { 'Authorization': 'Bearer ' + authToken }
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch('/api/admin/users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if (response.ok) {
-                    const activities = await response.json();
-                    const container = document.getElementById('recentActivity');
-                    
-                    container.innerHTML = activities.map(activity =>
-                        '<div class="activity-item">' +
-                            '<span class="activity-text">' +
-                                activity.collaborator_name + ' - ' + activity.total_signatures + ' signatures (' + activity.initiative + ')' +
-                            '</span>' +
-                            '<span class="activity-time">' +
-                                new Date(activity.created_at).toLocaleDateString('fr-FR') +
-                            '</span>' +
-                        '</div>'
-                    ).join('');
-                }
-            } catch (error) {
-                console.error('Erreur activité récente:', error);
-            }
-        }
-
-        async function loadUsers() {
-            try {
-                const response = await fetch(API_URL + '/api/admin/users', {
-                    headers: { 'Authorization': 'Bearer ' + authToken }
+                if (!response.ok) throw new Error('Erreur collaborateurs');
+                const collaborators = await response.json();
+                
+                displayCollaborators(collaborators);
+                
+                // Mettre à jour le filtre activité
+                const activityFilter = document.getElementById('activityCollaboratorFilter');
+                activityFilter.innerHTML = '<option value="all">Tous les collaborateurs</option>';
+                collaborators.forEach(collab => {
+                    activityFilter.innerHTML += `<option value="${collab.id}">${collab.name}</option>`;
                 });
                 
-                if (response.ok) {
-                    const users = await response.json();
-                    const container = document.getElementById('usersList');
-                    
-                    container.innerHTML = users.map(user => {
-                        const suspendBtn = '<button class="btn-sm btn-warning" onclick="changeUserStatus(' + user.id + ', &quot;suspended&quot;)">Suspendre</button>';
-                        const activateBtn = '<button class="btn-sm btn-success" onclick="changeUserStatus(' + user.id + ', &quot;active&quot;)">Activer</button>';
-                        
-                        return '<div class="user-card">' +
-                            '<div class="user-header">' +
-                                '<div>' +
-                                    '<div class="user-name">' + user.name + '</div>' +
-                                    '<div class="user-email">' + user.email + '</div>' +
-                                '</div>' +
-                                '<div>' +
-                                    '<span class="status-badge status-' + user.status + '">' + user.status + '</span>' +
-                                    (user.status === 'active' ? suspendBtn : activateBtn) +
-                                '</div>' +
-                            '</div>' +
-                            '<div class="user-stats">' +
-                                '<div class="user-stat">' +
-                                    '<div class="user-stat-number">' + user.stats.totalSignatures + '</div>' +
-                                    '<div class="user-stat-label">Signatures</div>' +
-                                '</div>' +
-                                '<div class="user-stat">' +
-                                    '<div class="user-stat-number">' + user.stats.totalScans + '</div>' +
-                                    '<div class="user-stat-label">Scans</div>' +
-                                '</div>' +
-                                '<div class="user-stat">' +
-                                    '<div class="user-stat-number">' + user.stats.avgQuality + '%</div>' +
-                                    '<div class="user-stat-label">Qualité</div>' +
-                                '</div>' +
-                            '</div>' +
-                        '</div>';
-                    }).join('');
-                }
             } catch (error) {
-                console.error('Erreur chargement collaborateurs:', error);
+                console.error('Erreur collaborateurs:', error);
             }
         }
 
-        async function changeUserStatus(userId, newStatus) {
+        function displayCollaborators(collaborators) {
+            const tbody = document.querySelector('#collaboratorsTable tbody');
+            
+            if (collaborators.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8">Aucun collaborateur trouvé</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = collaborators.map(collab => `
+                <tr>
+                    <td><strong>${collab.name || 'Nom manquant'}</strong></td>
+                    <td>${collab.email}</td>
+                    <td>
+                        ${collab.suspended ? 
+                            '<span class="status-badge status-rejected">Suspendu</span>' : 
+                            '<span class="status-badge status-approved">Actif</span>'
+                        }
+                    </td>
+                    <td>${collab.scanCount || 0}</td>
+                    <td>${(collab.signatures || 0).toLocaleString()}</td>
+                    <td>${collab.avgQuality || 0}%</td>
+                    <td>${collab.lastScan ? new Date(collab.lastScan).toLocaleDateString() : 'Jamais'}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="viewCollaboratorDetails(${collab.id})" style="margin-right: 5px;">Voir</button>
+                        ${collab.suspended ? 
+                            `<button class="btn btn-success" onclick="unsuspendCollaborator(${collab.id})">Réactiver</button>` :
+                            `<button class="btn btn-warning" onclick="suspendCollaborator(${collab.id})">Suspendre</button>`
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function viewCollaboratorDetails(id) {
             try {
-                const response = await fetch(API_URL + '/api/admin/users/' + userId + '/status', {
-                    method: 'PUT',
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/users/${id}/details`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur détails');
+                const data = await response.json();
+                const collab = data.collaborator;
+                
+                document.getElementById('collaboratorDetails').innerHTML = `
+                    <div class="form-group">
+                        <strong>Informations personnelles</strong>
+                        <p>Nom: ${collab.first_name} ${collab.last_name}</p>
+                        <p>Email: ${collab.email}</p>
+                        <p>Téléphone: ${collab.phone || 'Non renseigné'}</p>
+                        <p>Statut: ${collab.suspended ? 'Suspendu' : 'Actif'}</p>
+                        ${collab.suspension_reason ? `<p>Raison suspension: ${collab.suspension_reason}</p>` : ''}
+                    </div>
+                    <div class="form-group">
+                        <strong>Statistiques</strong>
+                        <p>Total scans: ${collab.total_scans || 0}</p>
+                        <p>Total signatures: ${collab.total_signatures || 0}</p>
+                        <p>Qualité moyenne: ${Math.round(collab.avg_quality || 0)}%</p>
+                        <p>Confiance moyenne: ${Math.round(collab.avg_confidence || 0)}%</p>
+                        <p>Dernier scan: ${collab.last_scan_date ? new Date(collab.last_scan_date).toLocaleDateString() : 'Jamais'}</p>
+                    </div>
+                    ${collab.scansByInitiative && collab.scansByInitiative.length > 0 ? `
+                        <div class="form-group">
+                            <strong>Activité par initiative</strong>
+                            ${collab.scansByInitiative.map(init => `
+                                <p>${init.initiative}: ${init.scanCount} scans, ${init.totalSignatures} signatures</p>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                
+                showModal('collaboratorModal');
+                
+            } catch (error) {
+                console.error('Erreur détails collaborateur:', error);
+            }
+        }
+
+        async function suspendCollaborator(id) {
+            const reason = prompt('Raison de la suspension:');
+            if (!reason) return;
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/users/${id}/suspend`, {
+                    method: 'PATCH',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + authToken
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ status: newStatus })
+                    body: JSON.stringify({ reason })
                 });
                 
-                if (response.ok) {
-                    await loadUsers();
-                } else {
-                    alert('Erreur changement statut');
-                }
+                if (!response.ok) throw new Error('Erreur suspension');
+                
+                alert('Collaborateur suspendu avec succès');
+                loadCollaborators();
+                
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur de connexion');
+                alert('Erreur: ' + error.message);
             }
         }
 
-        function showView(viewId) {
-            ['dashboardView', 'usersView'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
+        async function unsuspendCollaborator(id) {
+            if (!confirm('Confirmer la réactivation de ce collaborateur ?')) return;
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/users/${id}/unsuspend`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur réactivation');
+                
+                alert('Collaborateur réactivé avec succès');
+                loadCollaborators();
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        }
+
+        // Initiatives
+        async function loadInitiatives() {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch('/api/admin/initiatives', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur initiatives');
+                const data = await response.json();
+                
+                displayInitiatives(data.initiatives);
+                
+                // Mettre à jour le filtre activité
+                const activityFilter = document.getElementById('activityInitiativeFilter');
+                activityFilter.innerHTML = '<option value="all">Toutes les initiatives</option>';
+                data.initiatives.forEach(init => {
+                    activityFilter.innerHTML += `<option value="${init.name}">${init.name}</option>`;
+                });
+                
+            } catch (error) {
+                console.error('Erreur initiatives:', error);
+            }
+        }
+
+        function displayInitiatives(initiatives) {
+            const container = document.getElementById('initiativesList');
+            
+            if (initiatives.length === 0) {
+                container.innerHTML = '<p>Aucune initiative trouvée</p>';
+                return;
+            }
+
+            container.innerHTML = initiatives.map(init => {
+                const progress = init.target > 0 ? Math.min((init.collected / init.target) * 100, 100) : 0;
+                const statusClass = init.isActive ? 'status-active' : 'status-inactive';
+                
+                return `
+                    <div class="initiative-card">
+                        <div class="initiative-header">
+                            <div class="initiative-name">${init.name}</div>
+                            <div>
+                                <span class="initiative-status ${statusClass}">
+                                    ${init.isActive ? 'Actif' : 'Inactif'}
+                                </span>
+                                <button class="btn btn-primary" onclick="toggleInitiative(${init.id})" style="margin-left: 10px;">
+                                    ${init.isActive ? 'Désactiver' : 'Activer'}
+                                </button>
+                            </div>
+                        </div>
+                        <p style="color: #666; margin-bottom: 15px;">${init.description || 'Aucune description'}</p>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span><strong>${init.collected.toLocaleString()}</strong> / ${init.target.toLocaleString()} signatures</span>
+                            <span><strong>${progress.toFixed(1)}%</strong></span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; color: #666;">
+                            <span>📊 ${init.scanCount} scans</span>
+                            <span>👥 ${init.collaboratorsCount} collaborateurs</span>
+                            <span>📅 ${init.deadline ? new Date(init.deadline).toLocaleDateString() : 'Pas d\'échéance'}</span>
+                        </div>
+                        ${init.images && init.images.length > 0 ? `
+                            <div style="margin-top: 15px;">
+                                <strong>Images de référence:</strong>
+                                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                    ${init.images.slice(0, 3).map(img => `
+                                        <img src="${img.path}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
+                                    `).join('')}
+                                    ${init.images.length > 3 ? `<span style="color: #666;">+${init.images.length - 3} autres</span>` : ''}
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div style="margin-top: 15px;">
+                            <button class="btn btn-primary" onclick="uploadInitiativeImages(${init.id})">📷 Images</button>
+                            <button class="btn btn-warning" onclick="editInitiative(${init.id})">✏️ Modifier</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function toggleInitiative(id) {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/initiatives/${id}/toggle`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur toggle');
+                
+                loadInitiatives();
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        }
+
+        function showCreateInitiativeModal() {
+            showModal('createInitiativeModal');
+        }
+
+        document.getElementById('createInitiativeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                name: document.getElementById('initiativeName').value,
+                description: document.getElementById('initiativeDescription').value,
+                target_signatures: parseInt(document.getElementById('initiativeTarget').value),
+                deadline: document.getElementById('initiativeDeadline').value || null,
+                gpt_instructions: document.getElementById('initiativeGptInstructions').value,
+                theme_color: document.getElementById('initiativeThemeColor').value
+            };
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch('/api/admin/initiatives', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) throw new Error('Erreur création');
+                
+                closeModal('createInitiativeModal');
+                document.getElementById('createInitiativeForm').reset();
+                loadInitiatives();
+                alert('Initiative créée avec succès');
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        });
+
+        // Vérifications
+        async function loadPendingVerifications() {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const doubtReason = document.getElementById('doubtReasonFilter').value;
+                
+                const url = `/api/admin/verifications/pending?doubt_reason=${doubtReason}&limit=50`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur vérifications');
+                const data = await response.json();
+                
+                displayPendingVerifications(data.scans);
+                
+            } catch (error) {
+                console.error('Erreur vérifications:', error);
+            }
+        }
+
+        function displayPendingVerifications(scans) {
+            const tbody = document.querySelector('#verificationsTable tbody');
+            
+            if (scans.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9">Aucune vérification en attente</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = scans.map(scan => `
+                <tr>
+                    <td><input type="checkbox" class="verification-checkbox" data-scan-id="${scan.id}"></td>
+                    <td>${scan.collaboratorName}</td>
+                    <td>${scan.initiative}</td>
+                    <td>${scan.signatures}</td>
+                    <td><span class="status-badge status-pending">${scan.doubtDescription}</span></td>
+                    <td>${scan.quality}%</td>
+                    <td>${scan.confidence}%</td>
+                    <td>${new Date(scan.createdAt).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-success" onclick="approveVerification(${scan.id})" style="margin-right: 5px;">
+                            ✅ Approuver
+                        </button>
+                        <button class="btn btn-danger" onclick="rejectVerification(${scan.id})">
+                            ❌ Rejeter
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function approveVerification(scanId) {
+            const signatures = prompt('Nombre de signatures correct:');
+            const initiative = prompt('Initiative correcte:');
+            
+            if (!signatures || !initiative) return;
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/verifications/${scanId}/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        verified_signatures: parseInt(signatures),
+                        verified_initiative: initiative,
+                        verification_status: 'approved',
+                        admin_notes: 'Approuvé manuellement'
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Erreur approbation');
+                
+                loadPendingVerifications();
+                alert('Scan approuvé avec succès');
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        }
+
+        async function rejectVerification(scanId) {
+            const reason = prompt('Raison du rejet:');
+            if (!reason) return;
+            
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`/api/admin/verifications/${scanId}/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        verification_status: 'rejected',
+                        admin_notes: reason
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Erreur rejet');
+                
+                loadPendingVerifications();
+                alert('Scan rejeté avec succès');
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        }
+
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAllVerifications');
+            const checkboxes = document.querySelectorAll('.verification-checkbox');
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+                if (selectAll.checked) {
+                    selectedVerifications.add(checkbox.dataset.scanId);
+                } else {
+                    selectedVerifications.delete(checkbox.dataset.scanId);
+                }
             });
-            document.getElementById(viewId).classList.remove('hidden');
         }
 
-        function showDashboard() {
-            document.getElementById('loginForm').classList.add('hidden');
-            document.getElementById('adminDashboard').classList.remove('hidden');
-            showView('dashboardView');
+        // Activité
+        async function loadActivityDetailed() {
+            try {
+                const token = localStorage.getItem('adminToken');
+                const params = new URLSearchParams({
+                    collaborator_id: document.getElementById('activityCollaboratorFilter').value,
+                    initiative: document.getElementById('activityInitiativeFilter').value,
+                    date_from: document.getElementById('activityDateFrom').value,
+                    date_to: document.getElementById('activityDateTo').value,
+                    group_by: document.getElementById('activityGroupBy').value,
+                    limit: 100
+                });
+                
+                const response = await fetch(`/api/admin/activity/detailed?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Erreur activité');
+                const data = await response.json();
+                
+                displayActivityStats(data.totals);
+                displayActivityTable(data.activity);
+                
+            } catch (error) {
+                console.error('Erreur activité:', error);
+            }
         }
 
-        function showUsers() {
-            showView('usersView');
-            loadUsers();
+        function displayActivityStats(totals) {
+            const container = document.getElementById('activityStats');
+            
+            if (totals.length === 0) {
+                container.innerHTML = '<div class="loading">Aucune donnée pour cette période</div>';
+                return;
+            }
+
+            const totalSignatures = totals.reduce((sum, period) => sum + period.totalSignatures, 0);
+            const totalScans = totals.reduce((sum, period) => sum + period.totalScans, 0);
+            const avgQuality = totals.reduce((sum, period) => sum + period.avgQuality, 0) / totals.length;
+
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-number">${totalSignatures.toLocaleString()}</div>
+                    <div class="stat-label">Signatures période</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-number">${totalScans}</div>
+                    <div class="stat-label">Scans période</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⭐</div>
+                    <div class="stat-number">${Math.round(avgQuality)}%</div>
+                    <div class="stat-label">Qualité moyenne</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-number">${totals.length}</div>
+                    <div class="stat-label">Périodes actives</div>
+                </div>
+            `;
         }
 
-        function showLogin() {
-            document.getElementById('loginForm').classList.remove('hidden');
-            document.getElementById('adminDashboard').classList.add('hidden');
+        function displayActivityTable(activity) {
+            const tbody = document.querySelector('#activityTable tbody');
+            
+            if (activity.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7">Aucune activité trouvée</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = activity.map(item => `
+                <tr>
+                    <td>${item.periodFormatted}</td>
+                    <td>${item.collaboratorName}</td>
+                    <td>${item.initiative}</td>
+                    <td>${item.totalScans}</td>
+                    <td>${item.totalSignatures.toLocaleString()}</td>
+                    <td>${item.avgQuality}%</td>
+                    <td>${item.reliability}%</td>
+                </tr>
+            `).join('');
         }
 
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = message;
-            errorDiv.classList.remove('hidden');
+        // Navigation onglets
+        function switchTab(tabName) {
+            // Masquer tous les onglets
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Désactiver tous les boutons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Activer l'onglet sélectionné
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            // Charger les données spécifiques
+            switch(tabName) {
+                case 'collaborators':
+                    loadCollaborators();
+                    break;
+                case 'initiatives':
+                    loadInitiatives();
+                    break;
+                case 'verifications':
+                    loadPendingVerifications();
+                    break;
+                case 'activity':
+                    // Pas de chargement automatique, utilise les filtres
+                    break;
+            }
         }
 
-        function handleLogout() {
+        // Modals
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('show');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+
+        // Utilitaires
+        function logout() {
             localStorage.removeItem('adminToken');
-            authToken = null;
-            showLogin();
+            window.location.reload();
         }
 
-        function exportData() {
-            alert('Export en développement - Prochaine version !');
-        }
+        // Initialisation des filtres activité avec dates par défaut
+        window.addEventListener('load', function() {
+            const today = new Date();
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+            
+            document.getElementById('activityDateFrom').value = lastMonth.toISOString().split('T')[0];
+            document.getElementById('activityDateTo').value = today.toISOString().split('T')[0];
+        });
     </script>
 </body>
 </html>

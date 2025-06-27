@@ -8,10 +8,10 @@ router.get('/stats', verifyAdmin, async (req, res) => {
   try {
     console.log('📊 Récupération stats admin...');
 
-    // 1. SIGNATURES TOTALES (méthode corrigée)
+    // 1. SIGNATURES TOTALES (tester plusieurs colonnes possibles)
     const totalSignatures = await pool.query(`
       SELECT 
-        SUM(COALESCE(signatures, 0)) as total,
+        SUM(COALESCE(total_signatures, signatures, 0)) as total,
         COUNT(*) as total_scans
       FROM scans 
       WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
@@ -20,8 +20,8 @@ router.get('/stats', verifyAdmin, async (req, res) => {
     // 2. SIGNATURES AUJOURD'HUI VS HIER
     const todayStats = await pool.query(`
       SELECT 
-        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE THEN COALESCE(signatures, 0) ELSE 0 END) as today,
-        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE - 1 THEN COALESCE(signatures, 0) ELSE 0 END) as yesterday
+        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE THEN COALESCE(total_signatures, signatures, 0) ELSE 0 END) as today,
+        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE - 1 THEN COALESCE(total_signatures, signatures, 0) ELSE 0 END) as yesterday
       FROM scans
     `);
 
@@ -39,13 +39,13 @@ router.get('/stats', verifyAdmin, async (req, res) => {
     const qualityStats = await pool.query(`
       SELECT 
         AVG(COALESCE(quality, 0)) as avg_quality,
-        AVG(COALESCE(confidence, 0)) as avg_confidence
+        AVG(COALESCE(confidence, ocr_confidence, 0)) as avg_confidence
       FROM scans 
       WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
-        AND COALESCE(quality, confidence) IS NOT NULL
+        AND COALESCE(quality, confidence, ocr_confidence) IS NOT NULL
     `);
 
-    // 5. INITIATIVES avec stats réelles
+    // 5. VRAIES INITIATIVES depuis la table initiatives avec stats
     const realInitiatives = await pool.query(`
       SELECT 
         i.id,
@@ -54,17 +54,11 @@ router.get('/stats', verifyAdmin, async (req, res) => {
         i.status,
         i.target_signatures,
         i.deadline,
-        COALESCE(SUM(s.signatures), 0) as collected_signatures,
-        COUNT(s.id) as scan_count,
-        COUNT(DISTINCT COALESCE(s.collaborator_id, s.user_id)) as active_collaborators
+        i.total_signatures as collected_signatures,
+        i.total_scans as scan_count,
+        i.active_collaborators
       FROM initiatives i
-      LEFT JOIN scans s ON (
-        i.name = s.initiative 
-        OR LOWER(i.name) = LOWER(s.initiative)
-      )
-      WHERE (i.status != 'deleted' OR i.status IS NULL)
-      GROUP BY i.id, i.name, i.description, i.status, i.target_signatures, i.deadline
-      ORDER BY collected_signatures DESC
+      ORDER BY i.total_signatures DESC
     `);
 
     // 6. TOP COLLABORATEURS avec vraies données
@@ -74,14 +68,13 @@ router.get('/stats', verifyAdmin, async (req, res) => {
         COALESCE(c.first_name || ' ' || c.last_name, c.email, 'Collaborateur #' || c.id) as name,
         c.email,
         COUNT(s.id) as scan_count,
-        SUM(COALESCE(s.signatures, 0)) as total_signatures,
+        SUM(COALESCE(s.total_signatures, s.signatures, 0)) as total_signatures,
         AVG(COALESCE(s.quality, 0)) as avg_quality,
         MAX(s.created_at) as last_scan
       FROM collaborators c
       LEFT JOIN scans s ON c.id = COALESCE(s.collaborator_id, s.user_id) 
         AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'
-      WHERE (c.is_active = true OR c.is_active IS NULL)
-        AND (c.status != 'deleted' OR c.status IS NULL)
+      WHERE c.is_active = true OR c.is_active IS NULL
       GROUP BY c.id, c.first_name, c.last_name, c.email
       HAVING COUNT(s.id) > 0
       ORDER BY total_signatures DESC
@@ -107,7 +100,7 @@ router.get('/stats', verifyAdmin, async (req, res) => {
       avgQuality: Math.round(parseFloat(qualityStats.rows[0]?.avg_quality) || 0),
       avgConfidence: Math.round(parseFloat(qualityStats.rows[0]?.avg_confidence) || 0),
       
-      // Vraies initiatives (avec stats recalculées)
+      // Vraies initiatives (depuis table initiatives)
       realInitiatives: realInitiatives.rows.map(row => ({
         id: row.id,
         name: row.name || 'Initiative sans nom',
@@ -157,9 +150,9 @@ router.get('/recent-activity', verifyAdmin, async (req, res) => {
     const recentScans = await pool.query(`
       SELECT 
         s.id,
-        COALESCE(s.signatures, 0) as signatures_detected,
+        COALESCE(s.total_signatures, s.signatures, 0) as signatures_detected,
         COALESCE(s.quality, 0) as quality_score,
-        COALESCE(s.confidence, 0) as confidence_score,
+        COALESCE(s.confidence, s.ocr_confidence, 0) as confidence_score,
         COALESCE(s.initiative, 'Non définie') as initiative_name,
         s.created_at,
         COALESCE(c.first_name || ' ' || c.last_name, c.email, 'Collaborateur #' || COALESCE(s.collaborator_id, s.user_id)) as collaborator_name,
@@ -199,7 +192,7 @@ router.get('/charts/signatures-evolution', verifyAdmin, async (req, res) => {
     const evolution = await pool.query(`
       SELECT 
         DATE(created_at) as date,
-        SUM(COALESCE(signatures, 0)) as signatures,
+        SUM(COALESCE(total_signatures, signatures, 0)) as signatures,
         COUNT(*) as scans
       FROM scans 
       WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
