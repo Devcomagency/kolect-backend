@@ -58,6 +58,11 @@ app.use('/api/admin/initiatives', adminInitiativesRoutes);
 app.use('/api/admin/verifications', adminVerificationsRoutes);
 app.use('/api/admin/activity', adminActivityRoutes);
 
+// ======= ROUTES MATCHING SYSTEM (PHASE 1) =======
+console.log('🔄 Chargement routes matching...');
+app.use('/api/matching', require('./routes/matching'));
+console.log('✅ Routes matching chargées');
+
 // Interface web admin (AMÉLIORÉE)
 app.use('/admin', express.static('public/admin'));
 
@@ -75,9 +80,9 @@ app.get('/admin/dashboard', (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
-        message: 'Kolect Backend v2.0 - Admin Backoffice Complet 🚀',
+        message: 'Kolect Backend v2.1 - Admin Backoffice + Matching System 🚀',
         timestamp: new Date().toISOString(),
-        version: '2.0.0',
+        version: '2.1.0',
         features: [
             'App Mobile Kolect',
             'Admin Backoffice Complet',
@@ -85,7 +90,8 @@ app.get('/api/health', (req, res) => {
             'Upload Images Initiatives',
             'Vérifications Manuelles',
             'Activité Détaillée avec Filtres',
-            'Graphiques & Analytics'
+            'Graphiques & Analytics',
+            'Matching System Phase 1'
         ],
         availableRoutes: {
             mobile: [
@@ -119,6 +125,12 @@ app.get('/api/health', (req, res) => {
                 'GET /api/admin/activity/summary',
                 'GET /api/admin/activity/charts'
             ],
+            matching: [
+                'GET /api/matching/test',
+                'GET /api/matching/pending-matches',
+                'POST /api/matching/manual-match',
+                'POST /api/matching/upload-batch'
+            ],
             interfaces: [
                 'GET /admin (Interface admin)',
                 'GET /admin/dashboard (Dashboard admin)',
@@ -129,12 +141,14 @@ app.get('/api/health', (req, res) => {
         database: {
             tables: [
                 'collaborators (avec nouvelles colonnes)',
-                'scans (table principale)',
+                'scans (table principale + colonnes matching)',
                 'initiatives (avec images)',
                 'admin_users (authentification)',
                 'admin_logs (traçabilité)',
                 'scan_verifications (vérifications manuelles)',
                 'initiative_images (images de référence)',
+                'signature_details (détails signatures)',
+                'matching_logs (logs matching)',
                 'doubtful_scans (vue scans douteux)',
                 'collaborator_stats (vue stats collaborateurs)'
             ]
@@ -158,7 +172,9 @@ app.get('/api/test/admin-features', async (req, res) => {
                 'scan_verifications', 
                 'initiative_images',
                 'admin_users',
-                'admin_logs'
+                'admin_logs',
+                'signature_details',
+                'matching_logs'
             )
         `);
         
@@ -179,7 +195,9 @@ app.get('/api/test/admin-features', async (req, res) => {
                 'scan_verifications',
                 'initiative_images',
                 'admin_users',
-                'admin_logs'
+                'admin_logs',
+                'signature_details',
+                'matching_logs'
             ].filter(table =>
                 !tablesCheck.rows.some(r => r.table_name === table)
             ),
@@ -244,29 +262,29 @@ app.get('*', (req, res) => {
 
 // Démarrage serveur avec infos complètes
 app.listen(PORT, () => {
-    console.log('\n🚀 ===== KOLECT BACKEND V2.0 DÉMARRÉ =====');
+    console.log('\n🚀 ===== KOLECT BACKEND V2.1 DÉMARRÉ =====');
     console.log(`📡 Port: ${PORT}`);
     console.log(`🌐 URL locale: http://localhost:${PORT}`);
     console.log(`🔧 Admin: http://localhost:${PORT}/admin`);
     console.log(`⚡ Health: http://localhost:${PORT}/api/health`);
     console.log(`📊 Test: http://localhost:${PORT}/api/test/admin-features`);
-    console.log('\n📋 NOUVELLES FONCTIONNALITÉS V2.0:');
+    console.log(`🔄 Matching: http://localhost:${PORT}/api/matching/test`);
+    console.log('\n📋 NOUVELLES FONCTIONNALITÉS V2.1:');
     console.log('   ✅ Gestion collaborateurs complète (suspend/delete)');
     console.log('   ✅ Upload images initiatives pour GPT-4');
     console.log('   ✅ Vérifications manuelles scans douteux');
     console.log('   ✅ Activité détaillée avec filtres avancés');
     console.log('   ✅ Graphiques & analytics temps réel');
     console.log('   ✅ Database améliorée avec nouvelles tables');
+    console.log('   🆕 MATCHING SYSTEM Phase 1 - Automatisation validation');
+    console.log('   🆕 Upload batch jusqu\'à 1000 feuilles');
+    console.log('   🆕 Matching automatique terrain/validation');
     console.log('\n🔐 COMPTES ADMIN EXISTANTS:');
     console.log('   📧 admin@kolect.ch / Devcom20!');
     console.log('   📧 test@kolect.ch / test123');
     console.log('\n⚙️ PROCHAINES ÉTAPES:');
-    console.log('   1. Exécuter script SQL diagnostic');
-    console.log('   2. Tester interface admin mise à jour');
-    console.log('   3. Vérifier toutes nouvelles fonctionnalités');
+    console.log('   1. Tester API matching: GET /api/matching/test');
+    console.log('   2. Interface admin mise à jour');
+    console.log('   3. Upload batch validation feuilles');
     console.log('==========================================\n');
 });
-
-// Routes Matching System
-app.use('/api/matching', require('./routes/matching'));
-// Force restart dim. 29 juin 2025 00:30:25 CEST
