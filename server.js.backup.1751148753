@@ -266,6 +266,3 @@ app.listen(PORT, () => {
     console.log('   3. Vérifier toutes nouvelles fonctionnalités');
     console.log('==========================================\n');
 });
-
-// Routes Matching System
-app.use('/api/matching', require('./routes/matching'));
